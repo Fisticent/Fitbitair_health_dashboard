@@ -417,10 +417,11 @@ def build_dashboard(
     )
 
     history = []
-    for d in all_dates[-30:]:
-        ps = s.compute_strain(
-            (date_type.fromisoformat(d) - timedelta(days=1)).isoformat(), zones, **strain_kw
-        )["score"]
+    # Only the last 14 days are returned; reuse strain_by_day instead of
+    # recomputing compute_strain for each day and its prior day.
+    for d in all_dates[-14:]:
+        prior_d = (date_type.fromisoformat(d) - timedelta(days=1)).isoformat()
+        ps = strain_by_day.get(prior_d, 0)
         ex_d = exercise.get(d, {})
         w_date_d, w_kg_d = s.nearest_metric(weight, d)
         ps_debt = s.recent_sleep_debt_h(d, sleep)
@@ -429,7 +430,7 @@ def build_dashboard(
             {
                 "date": d,
                 "recovery": s.compute_recovery(d, hrv, rhr, sleep, resp, ps, ps_debt)["score"],
-                "strain": s.compute_strain(d, zones, **strain_kw)["score"],
+                "strain": strain_by_day.get(d, 0),
                 "sleep": sleep_row["score"],
                 "sleep_hours": sleep_row["hours"],
                 "sleep_need": sleep_row["need"],
@@ -576,7 +577,7 @@ def build_dashboard(
         },
         "exercise_recent": exercise_recent,
         "kpi_coverage": kpi_coverage,
-        "history": history[-14:],
+        "history": history,
         "source": "google_health_api",
     }
 

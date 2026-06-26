@@ -5,6 +5,8 @@ import { MiniSparkChart } from "./MiniSparkChart";
 import { TrendBars, recoveryTrendFromHistory, recoveryTrendAvg } from "./TrendBars";
 import {
   COLORS,
+  zoneColor,
+  zonePill,
   formatDateLong,
   formatSleepDuration,
   formatClockTime,
@@ -188,11 +190,8 @@ export function TodayView({
 
   const recoveryStatus = scoreStatusLabel(recoveryScore);
   // Ring + pill must follow the recovery zone, not a hardcoded green.
-  const recoveryColor =
-    { green: COLORS.TEAL, yellow: "#d98a16", red: COLORS.CORAL }[recovery?.zone] ||
-    recoveryStatus.color;
-  const recoveryPill =
-    { green: "teal", yellow: "amber", red: "coral" }[recovery?.zone] || "teal";
+  const recoveryColor = recovery?.zone ? zoneColor(recovery.zone) : recoveryStatus.color;
+  const recoveryPill = recovery?.zone ? zonePill(recovery.zone) : "teal";
   const sleepStatus = scoreStatusLabel(sleepScore);
   const stressStatus = stress ? stressZoneFromLevel(stress.level, stress.label) : null;
   const stressCalibrating = stress?.status === "calibrating";

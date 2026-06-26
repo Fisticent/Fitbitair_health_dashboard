@@ -1,7 +1,7 @@
 import { COLORS } from "./chartUtils";
 import { ZoneGauge } from "./ZoneGauge";
 
-const AMBER = "#d98a16";
+const AMBER = COLORS.AMBER;
 
 function buildSegments(minPct, maxPct, scaleMax) {
   return [

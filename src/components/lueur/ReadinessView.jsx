@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { LueurCard } from "./LueurCard";
 import { ProgressRing } from "./ProgressRing";
 import { TrendBars, recoveryTrendFromHistory } from "./TrendBars";
-import { COLORS, formatDateLong, scoreStatusLabel, formatStepsWithKm } from "./chartUtils";
+import { zoneColor, formatDateLong, scoreStatusLabel, formatStepsWithKm } from "./chartUtils";
 import { RECOVERY_ZONE_LABEL } from "../../data/labels";
 import { scoreZone } from "../../utils/metricStatus";
 import { formatMetricValue } from "../../utils/formatMetric";
@@ -130,8 +130,7 @@ export function ReadinessView({ data, onBack, history, stepsGoal }) {
   const status = scoreStatusLabel(recoveryScore);
   const zone = scoreZone(recoveryScore);
   // Ring + label must follow the recovery zone, not a hardcoded green.
-  const READINESS_COLOR = { green: COLORS.TEAL, yellow: "#d98a16", red: COLORS.CORAL };
-  const zoneColor = READINESS_COLOR[recovery?.zone] || status.color;
+  const ringColor = recovery?.zone ? zoneColor(recovery.zone) : status.color;
   const contributors = buildContributors(
     recovery,
     sleep,
@@ -171,12 +170,12 @@ export function ReadinessView({ data, onBack, history, stepsGoal }) {
             radius={96}
             stroke={13}
             value={recoveryScore ?? 0}
-            color={zoneColor}
+            color={ringColor}
           >
             <div className="lueur-ring-value" style={{ fontSize: 60, fontWeight: 300 }}>
               {recoveryScore ?? "—"}
             </div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: zoneColor }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: ringColor }}>
               {RECOVERY_ZONE_LABEL[recovery?.zone] || zone.label}
             </div>
           </ProgressRing>

@@ -1,6 +1,6 @@
 import { COLORS } from "./chartUtils";
 
-const AMBER = "#d98a16";
+const AMBER = COLORS.AMBER;
 const SLEEP = "#8b7fd4";
 const INK = "#2b2f37";
 

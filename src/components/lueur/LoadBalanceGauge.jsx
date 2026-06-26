@@ -1,7 +1,7 @@
 import { COLORS } from "./chartUtils";
 import { ZoneGauge } from "./ZoneGauge";
 
-const AMBER = "#d98a16";
+const AMBER = COLORS.AMBER;
 
 const SCALE_MIN = 0.4;
 const SCALE_MAX = 1.6;

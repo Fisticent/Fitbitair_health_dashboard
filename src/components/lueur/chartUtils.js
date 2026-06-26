@@ -2,9 +2,40 @@ export const COLORS = {
   TEAL: "#15b393",
   BLUE: "#5b8def",
   CORAL: "#ef8a6a",
+  AMBER: "#d98a16",
   GREY: "#c5cad3",
   LBLUE: "#9cc0f5",
 };
+
+/**
+ * Single source of truth: status zone → solid accent colour (rings, markers,
+ * text accents). Every screen must resolve zone colours through this so a
+ * tweak can't drift between cards (was duplicated/hardcoded in 7+ files).
+ */
+export function zoneColor(zone) {
+  return (
+    {
+      green: COLORS.TEAL,
+      yellow: COLORS.AMBER,
+      red: COLORS.CORAL,
+      blue: COLORS.BLUE,
+      orange: COLORS.AMBER,
+    }[zone] || COLORS.GREY
+  );
+}
+
+/** Status zone → CSS pill/badge class suffix (`lueur-status-pill--<suffix>`). */
+export function zonePill(zone) {
+  return (
+    {
+      green: "teal",
+      yellow: "amber",
+      red: "coral",
+      blue: "blue",
+      orange: "amber",
+    }[zone] || "neutral"
+  );
+}
 
 const TAU = Math.PI * 2;
 

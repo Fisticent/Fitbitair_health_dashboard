@@ -100,7 +100,10 @@ def compute_recovery(
     resp_val = resp.get(day)
 
     need = sleep_need_hours(prior_strain, recent_debt_h)
-    sleep_sigma = statistics.stdev(sleep_hist) if len(sleep_hist) > 2 else 1.0
+    # Floor the sleep scale at 0.5 h so a very regular sleeper's tiny σ can't
+    # amplify a normal shortfall into a runaway z — mirrors the floors used by
+    # _robust_z on the other components.
+    sleep_sigma = max(statistics.stdev(sleep_hist) if len(sleep_hist) > 2 else 1.0, 0.5)
 
     # Only weight components that actually have data, then renormalise the
     # weights — a partial day shouldn't be dragged toward 50% by the absent

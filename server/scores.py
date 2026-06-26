@@ -85,6 +85,7 @@ def compute_recovery(
     resp: dict[str, float],
     prior_strain: float = 0.0,
     recent_debt_h: float = 0.0,
+    skin_temp: dict[str, dict] | None = None,
 ) -> dict[str, Any]:
     dates = sorted(set(hrv) | set(rhr) | set(sleep))
     # Keep requested day even if metrics are still syncing in
@@ -98,6 +99,8 @@ def compute_recovery(
     rhr_val = rhr.get(day)
     sleep_val = sleep.get(day, {}).get("asleep_min", 0) / 60
     resp_val = resp.get(day)
+    temp_today = (skin_temp or {}).get(day) or {}
+    temp_dev = temp_today.get("deviation")
 
     need = sleep_need_hours(prior_strain, recent_debt_h)
     # Floor the sleep scale at 0.5 h so a very regular sleeper's tiny σ can't
@@ -131,6 +134,15 @@ def compute_recovery(
         z_resp = _robust_z(resp_val, resp_hist, floor=0.5, min_n=3)
         if z_resp is not None:
             weighted.append((0.10, -z_resp))  # lower respiratory rate is better
+    if temp_dev is not None:
+        temp_hist = [
+            skin_temp[d]["deviation"]
+            for d in hist_dates
+            if d in (skin_temp or {}) and skin_temp[d].get("deviation") is not None
+        ]
+        z_temp = _robust_z(temp_dev, temp_hist, floor=0.15, min_n=3)
+        if z_temp is not None:
+            weighted.append((0.10, -z_temp))  # warmer than baseline = worse recovery
 
     if weighted:
         total_w = sum(w for w, _ in weighted)
@@ -149,6 +161,7 @@ def compute_recovery(
             "rhr": {"value": round(rhr_val) if rhr_val is not None else None, "unit": "bpm"},
             "sleep_hours": {"value": round(sleep_val, 1), "need": round(need, 1)},
             "respiratory": {"value": round(resp_val) if resp_val is not None else None, "unit": "/min"},
+            "skin_temp": {"value": temp_dev, "unit": "°C", "nightly": temp_today.get("nightly")},
         },
     }
 
@@ -289,9 +302,11 @@ def health_monitor(
     rhr: dict[str, float],
     resp: dict[str, float],
     spo2: dict[str, float] | None = None,
+    skin_temp: dict[str, dict] | None = None,
 ) -> list[dict[str, Any]]:
     spo2 = spo2 or {}
-    dates = sorted(set(hrv) | set(rhr) | set(resp) | set(spo2))
+    skin_temp = skin_temp or {}
+    dates = sorted(set(hrv) | set(rhr) | set(resp) | set(spo2) | set(skin_temp))
     hist = [d for d in dates if d < day][-30:]
     metrics = []
 
@@ -317,6 +332,12 @@ def health_monitor(
         row("VFC", "ms", hrv.get(day), [hrv[d] for d in hist if d in hrv]),
         row("Respiration", "/min", resp.get(day), [resp[d] for d in hist if d in resp], invert=True),
         row("SpO₂", "%", spo2.get(day), [spo2[d] for d in hist if d in spo2]),
+        row(
+            "Temp. peau", "°C",
+            (skin_temp.get(day) or {}).get("nightly"),
+            [skin_temp[d]["nightly"] for d in hist if d in skin_temp and skin_temp[d].get("nightly") is not None],
+            invert=True,  # warmer than baseline = worse
+        ),
     ]:
         if item:
             metrics.append(item)
@@ -533,7 +554,11 @@ def _robust_z(value: float, history: list[float], floor: float, min_n: int = 10)
     ``floor`` clamps the scale in the metric's own units so a nearly-flat
     history can't amplify normal variation. Returns ``None`` below ``min_n``.
     """
-    h = history[-14:]  # ~14-day rolling baseline, à la WHOOP Stress Monitor
+    if not math.isfinite(value):
+        return None
+    # Drop any non-finite history values (a sensor can emit nan/inf) so the
+    # median/MAD — and the pstdev fallback — never choke.
+    h = [x for x in history[-14:] if math.isfinite(x)]  # ~14-day rolling baseline
     if len(h) < min_n:
         return None
     mu = statistics.median(h)
@@ -561,16 +586,19 @@ def compute_stress_proxy(
     rhr: dict[str, float],
     hrv: dict[str, float] | None = None,
     strain_by_day: dict[str, float] | None = None,
+    skin_temp: dict[str, dict] | None = None,
 ) -> dict[str, Any]:
     """Relative acute-stress index from autonomic signals vs the person's own
     baseline — the "Daytime Stress" / "Responsiveness" layer of Oura/Whoop/Fitbit.
 
-    Combines two signals, each z-scored against the prior ~14 days so the index
-    means *unusual for you today* rather than flagging normal physiology:
+    Combines up to three signals, each z-scored against the prior ~14 days so the
+    index means *unusual for you today* rather than flagging normal physiology:
       • HRV depression (primary, weight 0.6) — z-scored on ``ln(HRV)`` (lnRMSSD,
         like WHOOP) for stable day-to-day comparison; stress rises as HRV falls.
       • Daytime-HR elevation over resting (0.4) — damped by today's strain so a
         workout isn't misread as stress (motion compensation).
+      • Nightly skin-temperature deviation from baseline (0.2) — warmer than your
+        baseline = stress/illness/strain, the third core signal Oura/Whoop use.
     A logistic squashes the combined z into 0–100, so a clearly elevated day
     lands ~70 (Élevé) instead of pegging at 100 (the old linear 50+20·z hit the
     ceiling at z≥2.5). Higher = more stress. The long-term/chronic layer lives
@@ -620,11 +648,24 @@ def compute_stress_proxy(
             if zr is not None:
                 z_hrv = -zr  # stress rises as HRV falls
 
+    # --- Skin-temperature deviation vs personal baseline (warmer = more stress) ---
+    z_temp = None
+    if skin_temp and skin_temp.get(day) and skin_temp[day].get("deviation") is not None:
+        dev_hist = [
+            skin_temp[d]["deviation"]
+            for d in sorted(skin_temp)
+            if d < day and skin_temp[d].get("deviation") is not None
+        ]
+        # Floor 0.15°C ≈ typical nightly skin-temp noise so small drifts stay calm.
+        z_temp = _robust_z(skin_temp[day]["deviation"], dev_hist, floor=0.15)
+
     parts: list[tuple[float, float]] = []
     if z_hrv is not None:
         parts.append((0.6, z_hrv))
     if z_hr is not None:
         parts.append((0.4, z_hr))
+    if z_temp is not None:
+        parts.append((0.2, z_temp))
 
     if parts:
         total_w = sum(w for w, _ in parts)
@@ -676,7 +717,9 @@ def compute_stress_proxy(
         "components": {
             "hrv_z": round(z_hrv, 2) if z_hrv is not None else None,
             "hr_z": round(z_hr, 2) if z_hr is not None else None,
+            "temp_z": round(z_temp, 2) if z_temp is not None else None,
         },
+        "skin_temp": skin_temp.get(day) if skin_temp else None,
     }
 
 

@@ -54,6 +54,24 @@ function buildContributors(recovery, sleep, strain, steps, stepsGoal, distanceKm
     });
   }
 
+  if (comp.skin_temp?.value != null) {
+    const dev = comp.skin_temp.value;
+    // Warmer than baseline is worse; cooler/at baseline is fine.
+    const score = Math.min(100, Math.max(0, 100 - Math.max(0, dev) * 120));
+    const s = scoreStatusLabel(score);
+    const sign = dev >= 0 ? "+" : "";
+    items.push({
+      label: "Température cutanée",
+      tipId: "skin_temp",
+      showBar: false,
+      val: dev,
+      display: `${sign}${dev.toFixed(2)} °C vs baseline`,
+      score,
+      color: s.color,
+      statusText: s.text,
+    });
+  }
+
   if (sleep?.score != null) {
     const s = scoreStatusLabel(sleep.score);
     items.push({

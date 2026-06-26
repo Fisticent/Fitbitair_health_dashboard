@@ -226,6 +226,14 @@ def _fetch_raw_locked() -> dict:
     _raw_cache = {
         "profile": profile,
         "hrv_pts": _safe_fetch("hrv", lambda: hc.list_data_points("heart-rate-variability"), errors),
+        "daily_hrv_pts": _safe_fetch(
+            "daily-hrv", lambda: hc.list_data_points_optional("daily-heart-rate-variability"), errors
+        ),
+        "skin_temp_pts": _safe_fetch(
+            "skin-temp",
+            lambda: hc.list_data_points_optional("daily-sleep-temperature-derivations"),
+            errors,
+        ),
         "rhr_pts": _safe_fetch("rhr", lambda: hc.list_data_points("daily-resting-heart-rate"), errors),
         "sleep_pts": _safe_fetch("sleep", lambda: hc.list_data_points("sleep", max_pages=8), errors),
         "resp_pts": _safe_fetch("resp", lambda: hc.list_data_points("daily-respiratory-rate"), errors),
@@ -277,9 +285,13 @@ def parse_raw(raw: dict) -> dict:
     distance_pts = p.parse_distance_daily(raw.get("distance_pts") or [])
     distance_roll = p.parse_distance_rollup(raw.get("distance_rollups") or [])
     distance = p.merge_daily_max_float(distance_pts, distance_roll)
+    # HRV: prefer Fitbit's own nightly aggregate, fall back to our instant-sample
+    # average for any day the aggregate is missing.
+    hrv = {**p.parse_hrv_daily(raw["hrv_pts"]), **p.parse_daily_hrv_aggregate(raw.get("daily_hrv_pts") or [])}
     return {
         "profile": raw["profile"],
-        "hrv": p.parse_hrv_daily(raw["hrv_pts"]),
+        "hrv": hrv,
+        "skin_temp": p.parse_skin_temp_daily(raw.get("skin_temp_pts") or []),
         "rhr": p.parse_daily_rhr(raw["rhr_pts"]),
         "sleep": p.parse_sleep_sessions(raw["sleep_pts"]),
         "resp": p.parse_respiratory_daily(raw["resp_pts"]),
@@ -379,6 +391,7 @@ def build_dashboard(
     active_energy = parsed["active_energy"]
     body_fat = parsed["body_fat"]
     spo2 = parsed["spo2"]
+    skin_temp = parsed["skin_temp"]
 
     all_dates = sorted(
         set(hrv)
@@ -392,6 +405,7 @@ def build_dashboard(
         | set(hr_avg)
         | set(exercise)
         | set(active_energy)
+        | set(skin_temp)
     )
 
     today = _today()
@@ -407,11 +421,11 @@ def build_dashboard(
     prior_strain = strain_by_day.get(prior_day, s.compute_strain(prior_day, zones, **strain_kw)["score"])
 
     debt = s.recent_sleep_debt_h(focus, sleep)
-    recovery = s.compute_recovery(focus, hrv, rhr, sleep, resp, prior_strain, debt)
+    recovery = s.compute_recovery(focus, hrv, rhr, sleep, resp, prior_strain, debt, skin_temp)
     strain = s.compute_strain(focus, zones, **strain_kw)
     sleep_score = s.compute_sleep_score(focus, sleep, need=s.sleep_need_hours(prior_strain, debt))
-    monitor = s.health_monitor(focus, hrv, rhr, resp, spo2)
-    stress = s.compute_stress_proxy(focus, hr_avg, rhr, hrv, strain_by_day)
+    monitor = s.health_monitor(focus, hrv, rhr, resp, spo2, skin_temp)
+    stress = s.compute_stress_proxy(focus, hr_avg, rhr, hrv, strain_by_day, skin_temp)
     x_age = s.compute_physiological_age(
         focus, age, rhr, hrv, sleep, steps, zones, vo2, body_fat, sex=sex
     )
@@ -429,7 +443,7 @@ def build_dashboard(
         history.append(
             {
                 "date": d,
-                "recovery": s.compute_recovery(d, hrv, rhr, sleep, resp, ps, ps_debt)["score"],
+                "recovery": s.compute_recovery(d, hrv, rhr, sleep, resp, ps, ps_debt, skin_temp)["score"],
                 "strain": strain_by_day.get(d, 0),
                 "sleep": sleep_row["score"],
                 "sleep_hours": sleep_row["hours"],
@@ -441,7 +455,8 @@ def build_dashboard(
                 "rhr": rhr.get(d),
                 "respiratory": resp.get(d),
                 "spo2": spo2.get(d),
-                "stress": s.compute_stress_proxy(d, hr_avg, rhr, hrv, strain_by_day).get("score"),
+                "skin_temp_dev": (skin_temp.get(d) or {}).get("deviation"),
+                "stress": s.compute_stress_proxy(d, hr_avg, rhr, hrv, strain_by_day, skin_temp).get("score"),
                 "exercise_minutes": ex_d.get("minutes", 0),
                 "exercise_count": ex_d.get("count", 0),
                 "weight": round(w_kg_d, 1) if w_kg_d is not None else None,
@@ -511,6 +526,7 @@ def build_dashboard(
         {"id": "sleep_regularity", "name": "Régularité sommeil", "status": "calibrating" if sleep_regularity.get("status") == "calibrating" else "active", "has_data": sleep_regularity.get("score") is not None},
         {"id": "load_balance", "name": "Équilibre de charge", "status": "calibrating" if load_balance.get("status") == "calibrating" else "active", "has_data": load_balance.get("ratio") is not None},
         {"id": "hrv_balance", "name": "HRV Balance", "status": "calibrating" if hrv_balance.get("status") == "calibrating" else "active", "has_data": hrv_balance.get("score") is not None},
+        {"id": "skin_temp", "name": "Température cutanée", "status": "active", "has_data": skin_temp.get(focus) is not None},
     ]
 
     return {
@@ -559,6 +575,7 @@ def build_dashboard(
             "ideal_body_fat": body.get("ideal_body_fat"),
             "respiratory": resp.get(focus),
             "spo2": spo2.get(focus),
+            "skin_temp": skin_temp.get(focus),
             "active_calories": calories.get("active_kcal"),
             "bmr_kcal": calories.get("bmr_kcal"),
             "total_calories_est": calories.get("total_est_kcal"),

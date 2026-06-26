@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from datetime import datetime
 from typing import Any
 
@@ -64,6 +65,52 @@ def parse_hrv_daily(points: list[dict]) -> dict[str, float]:
         if val is not None:
             buckets.setdefault(key, []).append(float(val))
     return {k: sum(v) / len(v) for k, v in buckets.items() if v}
+
+
+def parse_daily_hrv_aggregate(points: list[dict]) -> dict[str, float]:
+    """Fitbit's own nightly HRV aggregate (avg RMSSD, ms).
+
+    Cleaner than averaging instant samples ourselves — it's the same figure
+    Fitbit shows in-app. Preferred over ``parse_hrv_daily`` when present.
+    """
+    out: dict[str, float] = {}
+    for p in points:
+        h = p.get("dailyHeartRateVariability")
+        if not h:
+            continue
+        date = h.get("date")
+        val = h.get("averageHeartRateVariabilityMilliseconds")
+        if date and val is not None and math.isfinite(float(val)) and float(val) > 0:
+            out[date_key(date)] = float(val)
+    return out
+
+
+def parse_skin_temp_daily(points: list[dict]) -> dict[str, dict[str, float]]:
+    """Nightly skin-temperature derivation vs personal baseline (°C).
+
+    ``deviation`` > 0 means warmer than your own baseline — an autonomic
+    stress / illness / incomplete-recovery signal (Oura/Whoop use the same).
+    We keep the raw pieces; the scores z-score ``deviation`` against history
+    like every other signal.
+    """
+    out: dict[str, dict[str, float]] = {}
+    for p in points:
+        t = p.get("dailySleepTemperatureDerivations")
+        if not t:
+            continue
+        date = t.get("date")
+        nightly = t.get("nightlyTemperatureCelsius")
+        baseline = t.get("baselineTemperatureCelsius")
+        if not date or nightly is None or baseline is None:
+            continue
+        if not (math.isfinite(float(nightly)) and math.isfinite(float(baseline))):
+            continue
+        out[date_key(date)] = {
+            "nightly": round(float(nightly), 2),
+            "baseline": round(float(baseline), 2),
+            "deviation": round(float(nightly) - float(baseline), 3),
+        }
+    return out
 
 
 def parse_hr_daily_avg(

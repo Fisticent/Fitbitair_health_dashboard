@@ -25,7 +25,7 @@ function MonitorMeta({ metric }) {
 
   const delta = value - baseline;
   const pct = baseline ? Math.round((delta / baseline) * 100) : 0;
-  const lowerIsBetter = name === "FC repos" || name === "Respiration";
+  const lowerIsBetter = name === "FC repos" || name === "Respiration" || name === "Temp. peau";
   const favorable = lowerIsBetter ? delta <= 0 : delta >= 0;
   const sign = delta >= 0 ? "+" : "";
   const deltaUnit = monitorDeltaUnit(unit);
@@ -50,6 +50,7 @@ function monitorTipId(name) {
     VFC: "hrv",
     "FC repos": "rhr",
     Respiration: "Respiration",
+    "Temp. peau": "skin_temp",
   };
   return map[name] ?? null;
 }

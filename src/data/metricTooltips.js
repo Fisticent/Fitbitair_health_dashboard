@@ -15,6 +15,8 @@ export const METRIC_TOOLTIPS = {
     "VFC (variabilité de la fréquence cardiaque, en ms) : plus elle est haute vs ta normale, plus ton système nerveux paraît détendu et récupéré. Mesurée la nuit ou au repos.",
   rhr:
     "FC repos (bpm) : fréquence cardiaque au repos. Une valeur basse et stable est généralement un bon signe ; une hausse vs ta moyenne peut signaler fatigue ou stress.",
+  skin_temp:
+    "Température cutanée nocturne (°C) : mesurée au poignet pendant le sommeil, exprimée en écart à ta baseline personnelle. Plus chaud que ta normale = signal possible de stress, début de maladie, cycle hormonal ou récupération incomplète. Intègre la récupération et le stress (3ᵉ signal, comme Oura/Whoop).",
   stress:
     "Moniteur stress (indice 0–100, estimation) : combine la baisse de VFC (signal principal, sur ln-VFC comme WHOOP) et l'élévation de FC diurne vs repos, chacune comparée à ta baseline ~14 jours. L'élévation de FC est atténuée les jours de forte charge pour ne pas confondre sport et stress. Couche « aiguë » ; la dérive long terme est suivie par le moniteur santé. Pas un capteur de stress réel.",
   x_age:

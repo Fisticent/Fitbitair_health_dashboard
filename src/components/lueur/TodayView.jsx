@@ -15,7 +15,7 @@ import {
   resolveDistanceKm,
 } from "./chartUtils";
 import { RECOVERY_ZONE_LABEL } from "../../data/labels";
-import { scoreZone, stressZoneFromLevel, strainRecoveryFit } from "../../utils/metricStatus";
+import { stressZoneFromLevel, strainRecoveryFit } from "../../utils/metricStatus";
 import { formatMetricValue } from "../../utils/formatMetric";
 import { cumulativeSleepDebt } from "../../utils/sleepDebt";
 import { LueurTopbarActions } from "./LueurTopbarActions";
@@ -179,6 +179,21 @@ export function TodayView({
   const hrvHistory = history?.map((d) => d.hrv) ?? [];
   const respHistory = history?.map((d) => d.respiratory) ?? [];
   const respValue = vitals?.respiratory;
+
+  // HRV legend: compare today to the personal recent average (not the recovery zone).
+  const hrvVals = hrvHistory.filter((v) => v != null);
+  const hrvAvg = hrvVals.length ? hrvVals.reduce((a, b) => a + b, 0) / hrvVals.length : null;
+  const hrvMeta =
+    hrv != null && hrvAvg != null
+      ? (() => {
+          const d = Math.round(hrv - hrvAvg);
+          return d === 0 ? "dans ta moyenne" : `${d > 0 ? "+" : ""}${d} ms vs moy.`;
+        })()
+      : "variabilité cardiaque";
+
+  // Skin temperature: API sends an object {nightly, baseline, deviation}.
+  const skinTempDev = vitals?.skin_temp?.deviation ?? null;
+  const skinTempHistory = history?.map((d) => d.skin_temp_dev) ?? [];
   const respMonitor = health_monitor?.find((m) => m.name === "Respiration");
   const sleepDebt7 = cumulativeSleepDebt(history, 7);
   const spo2History = (history ?? [])
@@ -381,7 +396,7 @@ export function TodayView({
           label="HRV"
           value={hrv != null ? formatMetricValue("HRV", hrv) : null}
           unit="ms"
-          meta={scoreZone(recoveryScore).label}
+          meta={hrvMeta}
           foot={
             <VitalSparkFoot
               values={hrvHistory}
@@ -418,14 +433,25 @@ export function TodayView({
           />
         )}
 
-        {vitals?.skin_temp_delta != null && (
+        {skinTempDev != null && (
           <VitalMetricCard
             tipId="skin_temp"
             label="Température"
-            value={vitals.skin_temp_delta}
+            value={`${skinTempDev >= 0 ? "+" : ""}${skinTempDev.toFixed(2)}`}
             unit="°C"
-            meta="écart nocturne"
-            foot={<VitalSparkFoot caption="—" />}
+            meta="écart vs ta baseline nocturne"
+            foot={
+              <VitalSparkFoot
+                values={skinTempHistory}
+                color={COLORS.CORAL}
+                gradient="coral"
+                caption={
+                  skinTempHistory.filter((v) => v != null).length > 0
+                    ? `tendance ${skinTempHistory.length} j`
+                    : "—"
+                }
+              />
+            }
           />
         )}
 

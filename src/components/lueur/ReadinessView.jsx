@@ -2,13 +2,13 @@ import { useEffect, useState } from "react";
 import { LueurCard } from "./LueurCard";
 import { ProgressRing } from "./ProgressRing";
 import { TrendBars, recoveryTrendFromHistory } from "./TrendBars";
-import { zoneColor, formatDateLong, scoreStatusLabel, formatStepsWithKm } from "./chartUtils";
+import { zoneColor, formatDateLong, scoreStatusLabel } from "./chartUtils";
 import { RECOVERY_ZONE_LABEL } from "../../data/labels";
 import { scoreZone } from "../../utils/metricStatus";
 import { formatMetricValue } from "../../utils/formatMetric";
 import { LueurMetricLabel } from "./LueurInfoTip";
 
-function buildContributors(recovery, sleep, strain, steps, stepsGoal, distanceKm) {
+function buildContributors(recovery, sleep, priorStrain) {
   const items = [];
   const comp = recovery?.components || {};
 
@@ -100,30 +100,17 @@ function buildContributors(recovery, sleep, strain, steps, stepsGoal, distanceKm
     });
   }
 
-  if (strain?.score != null) {
-    const priorPct = Math.max(0, 100 - strain.score);
+  // Prior-day strain is an actual input to the score (it raises the sleep need);
+  // show J-1, not today's load.
+  if (priorStrain != null) {
+    const priorPct = Math.max(0, 100 - priorStrain);
     const s = scoreStatusLabel(priorPct);
     items.push({
       label: "Charge de la veille",
       tipId: "strain",
       val: Math.round(priorPct),
-      display: `${strain.score} %`,
+      display: `${priorStrain} %`,
       score: priorPct,
-      color: s.color,
-      statusText: strain.label || s.text,
-    });
-  }
-
-  if (steps != null && stepsGoal) {
-    const pct = Math.min(100, Math.round((steps / stepsGoal) * 100));
-    const s = scoreStatusLabel(pct);
-    items.push({
-      label: "Activité",
-      tipId: "steps",
-      val: pct,
-      display: formatStepsWithKm(steps, distanceKm) ?? `${steps.toLocaleString("fr-FR")} pas`,
-      sub: `${pct} % de l'objectif`,
-      score: pct,
       color: s.color,
       statusText: s.text,
     });
@@ -132,8 +119,8 @@ function buildContributors(recovery, sleep, strain, steps, stepsGoal, distanceKm
   return items;
 }
 
-export function ReadinessView({ data, onBack, history, stepsGoal }) {
-  const { recovery, sleep, strain, vitals, focus_date } = data;
+export function ReadinessView({ data, onBack, history }) {
+  const { recovery, sleep, vitals, focus_date } = data;
   const [drawn, setDrawn] = useState(false);
 
   useEffect(() => {
@@ -149,14 +136,22 @@ export function ReadinessView({ data, onBack, history, stepsGoal }) {
   const zone = scoreZone(recoveryScore);
   // Ring + label must follow the recovery zone, not a hardcoded green.
   const ringColor = recovery?.zone ? zoneColor(recovery.zone) : status.color;
-  const contributors = buildContributors(
-    recovery,
-    sleep,
-    strain,
-    vitals?.steps,
-    stepsGoal,
-    vitals?.distance_km,
-  );
+  // Prior-day strain from history (the value compute_recovery actually consumes).
+  const priorDate = (() => {
+    try {
+      const d = new Date(`${focus_date}T12:00:00`);
+      d.setDate(d.getDate() - 1);
+      return d.toISOString().slice(0, 10);
+    } catch {
+      return null;
+    }
+  })();
+  const priorStrain = priorDate
+    ? history?.find((h) => h.date === priorDate)?.strain ?? null
+    : null;
+  // API sends skin_temp as an object {nightly, baseline, deviation}.
+  const skinTempDev = vitals?.skin_temp?.deviation ?? null;
+  const contributors = buildContributors(recovery, sleep, priorStrain);
   const trend = recoveryTrendFromHistory(history);
 
   const narrative =
@@ -208,6 +203,9 @@ export function ReadinessView({ data, onBack, history, stepsGoal }) {
         <LueurMetricLabel id="contributors" as="p" className="lueur-label" style={{ marginBottom: 8 }}>
           Contributeurs
         </LueurMetricLabel>
+        <p className="lueur-meta" style={{ marginBottom: 14 }}>
+          Lecture indicative des signaux — les barres ne reflètent pas les poids exacts du score.
+        </p>
         {contributors.length === 0 ? (
           <p className="lueur-meta">Aucun contributeur disponible pour ce jour.</p>
         ) : (
@@ -243,18 +241,25 @@ export function ReadinessView({ data, onBack, history, stepsGoal }) {
       </LueurCard>
 
       <div className="lueur-grid-2">
-        {vitals?.skin_temp_delta != null && (
+        {skinTempDev != null && (
           <LueurCard>
             <LueurMetricLabel id="skin_temp" as="p" className="lueur-label" style={{ marginBottom: 4 }}>
-              Température corporelle
+              Température cutanée
             </LueurMetricLabel>
             <div className="lueur-meta" style={{ marginBottom: 8 }}>
-              Écart <b style={{ color: "var(--lueur-text)" }}>{vitals.skin_temp_delta} °C</b>
+              Écart{" "}
+              <b style={{ color: "var(--lueur-text)" }}>
+                {skinTempDev >= 0 ? "+" : ""}
+                {skinTempDev.toFixed(2)} °C
+              </b>{" "}
+              vs baseline
             </div>
-            <p className="lueur-mono-meta">Historique 14 jours indisponible — une seule mesure synchronisée.</p>
+            <p className="lueur-mono-meta">
+              Mesurée pendant le sommeil · plus chaud que ta normale = récupération à surveiller.
+            </p>
           </LueurCard>
         )}
-        <LueurCard style={vitals?.skin_temp_delta == null ? { gridColumn: "span 2" } : undefined}>
+        <LueurCard style={skinTempDev == null ? { gridColumn: "span 2" } : undefined}>
           <LueurMetricLabel id="trends" as="p" className="lueur-label" style={{ marginBottom: 14 }}>
             Récupération · 7 jours
           </LueurMetricLabel>

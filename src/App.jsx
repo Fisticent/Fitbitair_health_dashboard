@@ -69,7 +69,7 @@ export default function App() {
         <div className="lueur-state-fullscreen">
           <h2>Connexion impossible</h2>
           <p>{error}</p>
-          <code>cd dashboard/server && py -3 -m uvicorn main:app --reload</code>
+          <code>cd dashboard/server && py -3 -m uvicorn main:app --host 127.0.0.1 --port 8000</code>
           <button type="button" className="lueur-btn-sync" onClick={refresh}>
             Réessayer
           </button>

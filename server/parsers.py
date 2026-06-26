@@ -185,9 +185,7 @@ def parse_blood_pressure(points: list[dict]) -> dict[str, dict]:
 def parse_respiratory_daily(points: list[dict]) -> dict[str, float]:
     out: dict[str, float] = {}
     for p in points:
-        rr = p.get("dailyRespiratoryRate") or p.get("dailyRespiratoryRate")
-        if not rr:
-            rr = p.get("respiratoryRate")
+        rr = p.get("dailyRespiratoryRate") or p.get("respiratoryRate")
         if not rr:
             continue
         date = rr.get("date") or rr.get("sampleTime", {}).get("civilTime", {}).get("date")

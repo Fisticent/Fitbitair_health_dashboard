@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { API_CREDENTIALS } from "./useAuth";
 import { appendProfileOverrideParams } from "./useManualMetrics";
 
 function todayIso() {
@@ -9,7 +10,7 @@ function todayIso() {
   return `${y}-${m}-${day}`;
 }
 
-export function useDashboard() {
+export function useDashboard({ enabled = true } = {}) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -25,7 +26,7 @@ export function useDashboard() {
     try {
       const qs = new URLSearchParams({ date: day, _: String(Date.now()) });
       appendProfileOverrideParams(qs);
-      const res = await fetch(`/api/dashboard?${qs}`);
+      const res = await fetch(`/api/dashboard?${qs}`, API_CREDENTIALS);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.detail || `HTTP ${res.status}`);
@@ -53,7 +54,7 @@ export function useDashboard() {
     try {
       const qs = new URLSearchParams({ date: selectedDate, _: String(Date.now()) });
       appendProfileOverrideParams(qs);
-      const res = await fetch(`/api/refresh?${qs}`, { method: "POST" });
+      const res = await fetch(`/api/refresh?${qs}`, { method: "POST", ...API_CREDENTIALS });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.detail || `Échec de la synchronisation (${res.status})`);
@@ -79,9 +80,13 @@ export function useDashboard() {
   const initialLoad = useRef(true);
 
   useEffect(() => {
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
     load(selectedDate, { initial: initialLoad.current });
     initialLoad.current = false;
-  }, [selectedDate, load]);
+  }, [selectedDate, load, enabled]);
 
   const changeDate = (day) => {
     if (day) setSelectedDate(day);

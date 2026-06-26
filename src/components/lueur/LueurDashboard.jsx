@@ -24,6 +24,8 @@ export function LueurDashboard({
   error,
   syncMessage,
   onReload,
+  onLogout,
+  user,
 }) {
   const [section, setSection] = useState("today");
 
@@ -148,6 +150,8 @@ export function LueurDashboard({
             caloriesGoal={caloriesGoal}
             saveCaloriesGoal={saveCaloriesGoal}
             onSaved={onReload}
+            onLogout={onLogout}
+            user={user}
           />
         );
       default:

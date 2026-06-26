@@ -1,8 +1,9 @@
-"""Google Health API v4 client — uses ~/.google-health-mcp tokens."""
+"""Google Health API v4 client — env vars (prod) or ~/.google-health-mcp (local)."""
 
 from __future__ import annotations
 
 import json
+import os
 import time
 from datetime import date, timedelta
 from pathlib import Path
@@ -14,6 +15,9 @@ BASE = "https://health.googleapis.com/v4"
 MCP_DIR = Path.home() / ".google-health-mcp"
 _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 _MAX_REQUEST_RETRIES = 4
+
+_env_access_token: str | None = None
+_env_expires_at: float = 0.0
 
 
 class PartialDataError(Exception):
@@ -29,39 +33,82 @@ def _load_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
+def _health_config() -> dict[str, str]:
+    client_id = os.getenv("GOOGLE_HEALTH_CLIENT_ID")
+    client_secret = os.getenv("GOOGLE_HEALTH_CLIENT_SECRET")
+    if client_id and client_secret:
+        return {
+            "GOOGLE_HEALTH_CLIENT_ID": client_id,
+            "GOOGLE_HEALTH_CLIENT_SECRET": client_secret,
+        }
+    config_path = MCP_DIR / "config.json"
+    if config_path.exists():
+        return _load_json(config_path)
+    raise FileNotFoundError(
+        "GOOGLE_HEALTH_CLIENT_ID manquant — configure les variables d'environnement ou google-health-mcp"
+    )
+
+
 def _save_tokens(tokens: dict) -> None:
     MCP_DIR.joinpath("tokens.json").write_text(
         json.dumps(tokens, indent=2), encoding="utf-8"
     )
 
 
+def _refresh_access_token(client_id: str, client_secret: str, refresh_token: str) -> str:
+    global _env_access_token, _env_expires_at
+
+    resp = requests.post(
+        "https://oauth2.googleapis.com/token",
+        data={
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "refresh_token": refresh_token,
+            "grant_type": "refresh_token",
+        },
+        timeout=30,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    access_token = data["access_token"]
+    _env_access_token = access_token
+    _env_expires_at = time.time() + int(data.get("expires_in", 3600))
+    return access_token
+
+
 def get_access_token() -> str:
+    global _env_access_token, _env_expires_at
+
+    env_refresh = os.getenv("GOOGLE_HEALTH_REFRESH_TOKEN")
+    if env_refresh:
+        if _env_access_token and _env_expires_at > time.time() + 120:
+            return _env_access_token
+        config = _health_config()
+        return _refresh_access_token(
+            config["GOOGLE_HEALTH_CLIENT_ID"],
+            config["GOOGLE_HEALTH_CLIENT_SECRET"],
+            env_refresh,
+        )
+
     tokens_path = MCP_DIR / "tokens.json"
-    config_path = MCP_DIR / "config.json"
     if not tokens_path.exists():
         raise FileNotFoundError("tokens.json manquant — lance google-health-mcp auth")
 
     tokens = _load_json(tokens_path)
-    config = _load_json(config_path)
+    config = _health_config()
     expires_at = tokens.get("expires_at", 0)
 
     if expires_at < time.time() + 120:
-        resp = requests.post(
-            "https://oauth2.googleapis.com/token",
-            data={
-                "client_id": config["GOOGLE_HEALTH_CLIENT_ID"],
-                "client_secret": config["GOOGLE_HEALTH_CLIENT_SECRET"],
-                "refresh_token": tokens["refresh_token"],
-                "grant_type": "refresh_token",
-            },
-            timeout=30,
+        access_token = _refresh_access_token(
+            config["GOOGLE_HEALTH_CLIENT_ID"],
+            config["GOOGLE_HEALTH_CLIENT_SECRET"],
+            tokens["refresh_token"],
         )
-        resp.raise_for_status()
-        data = resp.json()
-        tokens["access_token"] = data["access_token"]
-        tokens["expires_in"] = data.get("expires_in", 3600)
-        tokens["expires_at"] = int(time.time()) + int(tokens["expires_in"])
+        tokens["access_token"] = access_token
+        tokens["expires_in"] = 3600
+        tokens["expires_at"] = int(time.time()) + 3600
         _save_tokens(tokens)
+        return access_token
 
     return tokens["access_token"]
 

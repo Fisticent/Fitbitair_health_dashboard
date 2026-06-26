@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: fitbitair-health-api
+    runtime: python
+    plan: free
+    rootDir: .
+    buildCommand: pip install -r server/requirements.txt
+    startCommand: cd server && uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.0"
+      - key: APP_PUBLIC_URL
+        value: https://fitbitair-health-dashboard.vercel.app
+      - key: APP_GOOGLE_CLIENT_ID
+        sync: false
+      - key: APP_GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: ALLOWED_EMAIL
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: GOOGLE_HEALTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_HEALTH_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_HEALTH_REFRESH_TOKEN
+        sync: false

@@ -5,11 +5,21 @@ from __future__ import annotations
 import threading
 import time
 from datetime import date as date_type, datetime, timedelta, timezone
+from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:
+    pass
+
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 
+import auth
 import health_client as hc
 import parsers as p
 import scores as s
@@ -18,9 +28,17 @@ app = FastAPI(title="X-Health API", version="0.2.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=auth.cors_origins(),
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=auth.session_secret(),
+    same_site="lax",
+    https_only=auth.public_url().startswith("https"),
+    max_age=60 * 60 * 24 * 14,
 )
 
 _raw_cache: dict | None = None
@@ -540,7 +558,32 @@ def build_dashboard(
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "synced_at": _synced_at}
+    return {"ok": True, "synced_at": _synced_at, "auth": auth.auth_enabled()}
+
+
+@app.get("/api/auth/login")
+def auth_login(request: Request):
+    return auth.login_redirect(request)
+
+
+@app.get("/api/auth/callback")
+def auth_callback(
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+):
+    return auth.callback_handler(request, code=code, state=state, error=error)
+
+
+@app.get("/api/auth/me")
+def auth_me(request: Request):
+    return auth.me_payload(request)
+
+
+@app.post("/api/auth/logout")
+def auth_logout(request: Request):
+    return auth.logout(request)
 
 
 @app.get("/api/dashboard")
@@ -550,6 +593,7 @@ def dashboard(
     dob: str | None = Query(None, description="YYYY-MM-DD"),
     height_cm: float | None = Query(None, ge=100, le=250),
     weight_kg: float | None = Query(None, ge=30, le=300),
+    _user: dict | None = Depends(auth.require_user),
 ):
     try:
         if day:
@@ -574,6 +618,7 @@ def refresh(
     dob: str | None = Query(None, description="YYYY-MM-DD"),
     height_cm: float | None = Query(None, ge=100, le=250),
     weight_kg: float | None = Query(None, ge=30, le=300),
+    _user: dict | None = Depends(auth.require_user),
 ):
     global _raw_cache
     _raw_cache = None

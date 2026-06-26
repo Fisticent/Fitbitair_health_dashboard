@@ -1,9 +1,23 @@
 import { motion } from "framer-motion";
+import { useMemo } from "react";
 import { LueurDashboard } from "./components/lueur/LueurDashboard";
+import { LoginView } from "./components/lueur/LoginView";
+import { useAuth } from "./hooks/useAuth";
 import { useDashboard } from "./hooks/useDashboard";
 import "./styles/lueur.css";
 
+function readAuthError() {
+  const params = new URLSearchParams(window.location.search);
+  const err = params.get("auth_error");
+  if (!err) return null;
+  window.history.replaceState({}, "", window.location.pathname);
+  return err;
+}
+
 export default function App() {
+  const authError = useMemo(() => readAuthError(), []);
+  const { loading: authLoading, authRequired, authenticated, user, login, logout } = useAuth();
+  const canLoadDashboard = !authRequired || authenticated;
   const {
     data,
     loading,
@@ -15,7 +29,23 @@ export default function App() {
     refresh,
     syncMessage,
     reload,
-  } = useDashboard();
+  } = useDashboard({ enabled: canLoadDashboard });
+
+  if (authLoading) {
+    return (
+      <div className="lueur-state-fullscreen">
+        <motion.div
+          className="lueur-loader"
+          animate={{ rotate: 360 }}
+          transition={{ repeat: Infinity, duration: 1.2, ease: "linear" }}
+        />
+      </div>
+    );
+  }
+
+  if (authRequired && !authenticated) {
+    return <LoginView onLogin={login} authError={authError} user={user} />;
+  }
 
   return (
     <>
@@ -54,6 +84,8 @@ export default function App() {
           error={error}
           syncMessage={syncMessage}
           onReload={reload}
+          onLogout={authRequired ? logout : null}
+          user={user}
         />
       )}
     </>

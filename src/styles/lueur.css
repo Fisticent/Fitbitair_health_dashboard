@@ -2243,6 +2243,79 @@ body {
   border: 1px solid #fde68a;
 }
 
+/* Login */
+.lueur-login-card {
+  width: min(100%, 380px);
+  padding: 36px 32px 32px;
+  border-radius: 22px;
+  background: linear-gradient(165deg, #fdfdfe 0%, #f6f7f9 100%);
+  border: 1px solid var(--lueur-border-soft);
+  box-shadow: 0 24px 60px rgba(21, 23, 28, 0.08);
+  text-align: center;
+}
+
+.lueur-login-kicker {
+  margin: 0 0 8px;
+  font-family: var(--lueur-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--lueur-text-secondary);
+}
+
+.lueur-login-title {
+  margin: 0 0 8px;
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.lueur-login-sub {
+  margin: 0 0 24px;
+  font-size: 14px;
+  color: var(--lueur-muted);
+}
+
+.lueur-login-error {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+  font-size: 13px;
+}
+
+.lueur-login-avatar {
+  display: block;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 4px 16px rgba(21, 23, 28, 0.12);
+}
+
+.lueur-btn-google {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 18px;
+  border: 1px solid var(--lueur-border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--lueur-text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.lueur-btn-google:hover {
+  background: #fafbfc;
+  box-shadow: 0 4px 16px rgba(21, 23, 28, 0.08);
+}
+
 .lueur-sync-toast {
   position: fixed;
   bottom: 24px;

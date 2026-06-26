@@ -32,6 +32,8 @@ export function ProfileView({
   caloriesGoal,
   saveCaloriesGoal,
   onSaved,
+  onLogout,
+  user,
 }) {
   const [draft, setDraft] = useState({
     sex: overrides.sex || "",
@@ -229,6 +231,16 @@ export function ProfileView({
           <p className="lueur-meta" style={{ marginTop: 8 }}>
             Les réglages de cette page sont stockés localement sur cet appareil.
           </p>
+          {user?.email && (
+            <p className="lueur-meta" style={{ marginTop: 8 }}>
+              Session : {user.name || user.email}
+            </p>
+          )}
+          {onLogout && (
+            <button type="button" className="lueur-profile-reset" style={{ marginTop: 12 }} onClick={onLogout}>
+              Se déconnecter
+            </button>
+          )}
         </LueurCard>
 
         <div className="lueur-profile-actions">

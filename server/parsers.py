@@ -488,8 +488,29 @@ def parse_sleep_sessions(points: list[dict]) -> dict[str, dict[str, float]]:
     return by_date
 
 
+def _sample_time_sort_key(sample_time: dict | None) -> str:
+    """Sortable ISO-ish key from a Google Health sampleTime block."""
+    if not sample_time:
+        return ""
+    physical = sample_time.get("physicalTime")
+    if physical:
+        return physical
+    civil = sample_time.get("civilTime") or {}
+    d = civil.get("date") or {}
+    t = civil.get("time") or {}
+    if not d.get("year"):
+        return ""
+    return (
+        f"{date_key(d)}T"
+        f"{int(t.get('hours', 0)):02d}:"
+        f"{int(t.get('minutes', 0)):02d}:"
+        f"{int(t.get('seconds', 0)):02d}"
+    )
+
+
 def parse_weight(points: list[dict]) -> dict[str, float]:
-    out: dict[str, float] = {}
+    """Latest weight per civil day (multiple syncs may arrive out of order)."""
+    best: dict[str, tuple[str, float]] = {}
     for p in points:
         w = p.get("weight")
         if not w:
@@ -503,9 +524,13 @@ def parse_weight(points: list[dict]) -> dict[str, float]:
             kg = float(w["weightGrams"]) / 1000.0
         if kg is None and w.get("pounds") is not None:
             kg = float(w["pounds"]) * 0.45359237
-        if kg is not None:
-            out[key] = float(kg)
-    return out
+        if kg is None:
+            continue
+        ts = _sample_time_sort_key(w.get("sampleTime"))
+        prev = best.get(key)
+        if prev is None or ts >= prev[0]:
+            best[key] = (ts, float(kg))
+    return {day: kg for day, (_, kg) in best.items()}
 
 
 def parse_height(points: list[dict]) -> dict[str, float]:

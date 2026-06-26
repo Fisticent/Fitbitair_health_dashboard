@@ -23,6 +23,7 @@ import auth
 import health_client as hc
 import parsers as p
 import scores as s
+import user_settings as us
 
 app = FastAPI(title="X-Health API", version="0.2.0")
 
@@ -144,6 +145,22 @@ def _parse_profile_overrides(
     if weight_kg is not None and 30 <= weight_kg <= 300:
         out["weight_kg"] = round(weight_kg, 1)
     return out
+
+
+def _resolve_dashboard_context(
+    sex: str | None,
+    dob: str | None,
+    height_cm: float | None,
+    weight_kg: float | None,
+    user: dict | None,
+) -> tuple[dict, dict]:
+    query_overrides = _parse_profile_overrides(
+        sex=sex, dob=dob, height_cm=height_cm, weight_kg=weight_kg
+    )
+    stored = us.get_settings(user["email"]) if user and user.get("email") else {}
+    stored_overrides = us.profile_overrides_to_api(stored.get("profile_overrides") or {})
+    overrides = {**stored_overrides, **query_overrides}
+    return overrides, stored
 
 
 def _apply_body_overrides(body: dict, overrides: dict) -> dict:
@@ -336,6 +353,7 @@ def build_dashboard(
     focus_date: str | None = None,
     raw: dict | None = None,
     overrides: dict | None = None,
+    stored_settings: dict | None = None,
 ) -> dict:
     raw = raw or fetch_raw()
     parsed = parse_raw(raw)
@@ -451,7 +469,15 @@ def build_dashboard(
     load_balance = s.compute_load_balance(focus, strain_by_day)
     hrv_balance = s.compute_hrv_balance(focus, hrv)
 
-    body = s.compute_body_composition(focus, weight, height, body_fat, age=age, sex=sex)
+    manual_bf_series = (stored_settings or {}).get("body_fat") or {}
+    _, google_bf_focus = s.nearest_metric(body_fat, focus)
+    body_fat_for_calc = body_fat
+    if google_bf_focus is None and manual_bf_series:
+        manual_bf, _ = us.resolve_manual_body_fat(manual_bf_series, focus)
+        if manual_bf is not None:
+            body_fat_for_calc = {**body_fat, focus: manual_bf}
+
+    body = s.compute_body_composition(focus, weight, height, body_fat_for_calc, age=age, sex=sex)
     body = _apply_body_overrides(body, overrides or {})
     calories = s.compute_calories_summary(
         focus,
@@ -586,6 +612,26 @@ def auth_logout(request: Request):
     return auth.logout(request)
 
 
+@app.get("/api/user-settings")
+def get_user_settings(user: dict | None = Depends(auth.require_user)):
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentification requise")
+    return us.get_settings(user["email"])
+
+
+@app.put("/api/user-settings")
+async def put_user_settings(request: Request, user: dict | None = Depends(auth.require_user)):
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentification requise")
+    try:
+        payload = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="JSON invalide") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Corps de requête invalide")
+    return us.replace_settings(user["email"], payload)
+
+
 @app.get("/api/dashboard")
 def dashboard(
     day: str | None = Query(None, alias="date", description="YYYY-MM-DD"),
@@ -601,8 +647,8 @@ def dashboard(
                 date_type.fromisoformat(day)
             except ValueError as e:
                 raise HTTPException(400, "Format date invalide (YYYY-MM-DD)") from e
-        overrides = _parse_profile_overrides(sex=sex, dob=dob, height_cm=height_cm, weight_kg=weight_kg)
-        return build_dashboard(focus_date=day, overrides=overrides)
+        overrides, stored = _resolve_dashboard_context(sex, dob, height_cm, weight_kg, _user)
+        return build_dashboard(focus_date=day, overrides=overrides, stored_settings=stored)
     except FileNotFoundError as e:
         raise HTTPException(503, str(e)) from e
     except HTTPException:
@@ -629,8 +675,8 @@ def refresh(
                 503,
                 "Synchronisation partielle — aucune donnée vitale. Vérifie l'auth Google Health.",
             )
-        overrides = _parse_profile_overrides(sex=sex, dob=dob, height_cm=height_cm, weight_kg=weight_kg)
-        return build_dashboard(focus_date=day, raw=raw, overrides=overrides)
+        overrides, stored = _resolve_dashboard_context(sex, dob, height_cm, weight_kg, _user)
+        return build_dashboard(focus_date=day, raw=raw, overrides=overrides, stored_settings=stored)
     except FileNotFoundError as e:
         raise HTTPException(503, str(e)) from e
     except HTTPException:

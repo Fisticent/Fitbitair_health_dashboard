@@ -2,7 +2,15 @@ import { useCallback, useEffect, useState } from "react";
 
 const KEY = "xhealth_manual";
 
-function readAll() {
+let syncEnabled = false;
+let syncPush = null;
+
+export function configureUserSettingsSync({ enabled, push }) {
+  syncEnabled = Boolean(enabled);
+  syncPush = enabled ? push : null;
+}
+
+export function readAll() {
   try {
     return JSON.parse(localStorage.getItem(KEY) || "{}");
   } catch {
@@ -10,8 +18,54 @@ function readAll() {
   }
 }
 
-function writeAll(data) {
+export function writeAllLocal(data) {
   localStorage.setItem(KEY, JSON.stringify(data));
+}
+
+export function localSettingsPayload(data = readAll()) {
+  const out = {};
+  if (data.profile_overrides && Object.keys(data.profile_overrides).length) {
+    out.profile_overrides = data.profile_overrides;
+  }
+  if (data.body_fat && Object.keys(data.body_fat).length) {
+    out.body_fat = data.body_fat;
+  }
+  if (data.steps_goal != null) out.steps_goal = data.steps_goal;
+  if (data.calories_goal != null) out.calories_goal = data.calories_goal;
+  return out;
+}
+
+export function applyRemoteSettings(remote) {
+  const local = readAll();
+  const next = { ...local };
+
+  if (remote.profile_overrides && Object.keys(remote.profile_overrides).length) {
+    next.profile_overrides = remote.profile_overrides;
+  } else {
+    delete next.profile_overrides;
+  }
+
+  if (remote.body_fat && Object.keys(remote.body_fat).length) {
+    next.body_fat = remote.body_fat;
+  } else {
+    delete next.body_fat;
+  }
+
+  if (remote.steps_goal != null) next.steps_goal = remote.steps_goal;
+  else delete next.steps_goal;
+
+  if (remote.calories_goal != null) next.calories_goal = remote.calories_goal;
+  else delete next.calories_goal;
+
+  writeAllLocal(next);
+  window.dispatchEvent(new CustomEvent("xhealth-settings-updated"));
+}
+
+function writeAll(data) {
+  writeAllLocal(data);
+  if (syncEnabled && syncPush) {
+    syncPush(data).catch(() => {});
+  }
 }
 
 /** Latest manual body-fat % on or before `date`. */
@@ -35,9 +89,19 @@ export function resolveManualBodyFat(date) {
 export function useManualBodyFat(date) {
   const [resolved, setResolved] = useState(() => resolveManualBodyFat(date));
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     setResolved(resolveManualBodyFat(date));
   }, [date]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    const onUpdate = () => refresh();
+    window.addEventListener("xhealth-settings-updated", onUpdate);
+    return () => window.removeEventListener("xhealth-settings-updated", onUpdate);
+  }, [refresh]);
 
   const saveBodyFat = useCallback(
     (pct) => {
@@ -84,6 +148,16 @@ export function useStepsGoal() {
     return Number.isFinite(n) && n > 0 ? Math.round(n) : DEFAULT_STEPS_GOAL;
   });
 
+  useEffect(() => {
+    const onUpdate = () => {
+      const all = readAll();
+      const n = Number(all.steps_goal);
+      setGoal(Number.isFinite(n) && n > 0 ? Math.round(n) : DEFAULT_STEPS_GOAL);
+    };
+    window.addEventListener("xhealth-settings-updated", onUpdate);
+    return () => window.removeEventListener("xhealth-settings-updated", onUpdate);
+  }, []);
+
   const saveStepsGoal = useCallback((value) => {
     const all = readAll();
     const n = Math.round(Number(value));
@@ -108,6 +182,16 @@ export function useCaloriesGoal() {
     const n = Number(all.calories_goal);
     return Number.isFinite(n) && n > 0 ? Math.round(n) : DEFAULT_CALORIES_GOAL;
   });
+
+  useEffect(() => {
+    const onUpdate = () => {
+      const all = readAll();
+      const n = Number(all.calories_goal);
+      setGoal(Number.isFinite(n) && n > 0 ? Math.round(n) : DEFAULT_CALORIES_GOAL);
+    };
+    window.addEventListener("xhealth-settings-updated", onUpdate);
+    return () => window.removeEventListener("xhealth-settings-updated", onUpdate);
+  }, []);
 
   const saveCaloriesGoal = useCallback((value) => {
     const all = readAll();
@@ -157,6 +241,12 @@ export function appendProfileOverrideParams(params) {
 
 export function useProfileOverrides() {
   const [overrides, setOverrides] = useState(readProfileOverrides);
+
+  useEffect(() => {
+    const onUpdate = () => setOverrides(readProfileOverrides());
+    window.addEventListener("xhealth-settings-updated", onUpdate);
+    return () => window.removeEventListener("xhealth-settings-updated", onUpdate);
+  }, []);
 
   const saveOverrides = useCallback((patch) => {
     const all = readAll();

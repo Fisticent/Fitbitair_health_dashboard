@@ -4,6 +4,7 @@ import { LueurDashboard } from "./components/lueur/LueurDashboard";
 import { LoginView } from "./components/lueur/LoginView";
 import { useAuth } from "./hooks/useAuth";
 import { useDashboard } from "./hooks/useDashboard";
+import { useUserSettingsSync } from "./hooks/useUserSettingsSync";
 import "./styles/lueur.css";
 
 function readAuthError() {
@@ -17,7 +18,9 @@ function readAuthError() {
 export default function App() {
   const authError = useMemo(() => readAuthError(), []);
   const { loading: authLoading, authRequired, authenticated, user, login, logout } = useAuth();
-  const canLoadDashboard = !authRequired || authenticated;
+  const { ready: settingsReady } = useUserSettingsSync({ enabled: authenticated });
+  const canLoadDashboard =
+    (!authRequired || authenticated) && (!authenticated || settingsReady);
   const {
     data,
     loading,

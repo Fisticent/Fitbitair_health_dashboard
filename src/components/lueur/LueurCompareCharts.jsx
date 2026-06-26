@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { LueurCard } from "./LueurCard";
 import { LueurWeightChart } from "./WeightChart";
-import { COLORS, formatChartDate } from "./chartUtils";
+import { COLORS, formatChartDate, pickVisibleXLabels, xLabelStyle } from "./chartUtils";
 import { seriesBaseline } from "../../utils/comparisons";
 import { formatMetricValue } from "../../utils/formatMetric";
 import { LueurMetricLabel } from "./LueurInfoTip";
@@ -14,12 +14,6 @@ function dayLabel(iso) {
   if (!iso) return "";
   const d = new Date(`${iso}T12:00:00`);
   return d.toLocaleDateString("fr-FR", { day: "numeric" });
-}
-
-function xLabelAlign(index, total) {
-  if (index === 0) return "start";
-  if (index === total - 1) return "end";
-  return "middle";
 }
 
 function buildSegments(history, key, xOf, yOf) {
@@ -84,22 +78,18 @@ function ChartAvgPills({ pills }) {
 }
 
 function ChartXLabels({ points, width }) {
+  const visible = useMemo(
+    () => pickVisibleXLabels(points, width),
+    [points, width],
+  );
+
   return (
     <div className="lueur-weight-chart-xlabels" aria-hidden="true">
-      {points.map((pt) => (
+      {visible.map((pt) => (
         <span
           key={pt.date}
           className="lueur-weight-chart-xlabel"
-          style={{
-            left: `${(pt.x / width) * 100}%`,
-            textAlign: pt.labelAlign,
-            transform:
-              pt.labelAlign === "start"
-                ? "translateX(0)"
-                : pt.labelAlign === "end"
-                  ? "translateX(-100%)"
-                  : "translateX(-50%)",
-          }}
+          style={xLabelStyle(pt, width)}
         >
           {dayLabel(pt.date)}
         </span>
@@ -235,7 +225,6 @@ function LueurScoresChart({ history }) {
     const xPoints = history.map((row, i) => ({
       date: row.date,
       x: xOf(i),
-      labelAlign: xLabelAlign(i, n),
     }));
 
     return {
@@ -443,7 +432,6 @@ function LueurStressChart({ history }) {
     const xPoints = stressHistory.map((row, i) => ({
       date: row.date,
       x: xOf(i),
-      labelAlign: xLabelAlign(i, n),
     }));
 
     return {

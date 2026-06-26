@@ -229,7 +229,7 @@ export function ProfileView({
             {synced_at ? ` · dernière sync ${formatSyncTime(synced_at) ?? "—"}` : ""}
           </p>
           <p className="lueur-meta" style={{ marginTop: 8 }}>
-            Les réglages de cette page sont stockés localement sur cet appareil.
+            Sexe, masse grasse et objectifs sont synchronisés avec ton compte (tous tes appareils).
           </p>
           {user?.email && (
             <p className="lueur-meta" style={{ marginTop: 8 }}>

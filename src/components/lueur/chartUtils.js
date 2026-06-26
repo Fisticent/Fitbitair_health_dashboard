@@ -72,6 +72,70 @@ export function formatChartDate(iso) {
   return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
 }
 
+/** Align first/last x labels so they stay inside the chart edges. */
+export function xLabelAlign(index, total) {
+  if (total <= 1) return "middle";
+  if (index === 0) return "start";
+  if (index === total - 1) return "end";
+  return "middle";
+}
+
+/**
+ * Pick x-axis labels that won't overlap (always keeps first & last when possible).
+ * @param {Array<{ x: number, date: string }>} points sorted by x
+ */
+export function pickVisibleXLabels(points, width, { minGapPx } = {}) {
+  if (!points?.length) return [];
+  const gap = minGapPx ?? Math.max(48, width / 7);
+
+  if (points.length <= 2) {
+    return points.map((pt, i) => ({
+      ...pt,
+      labelAlign: xLabelAlign(i, points.length),
+    }));
+  }
+
+  const picked = [{ idx: 0, pt: points[0] }];
+  let lastX = points[0].x;
+  const lastIdx = points.length - 1;
+
+  for (let i = 1; i < lastIdx; i++) {
+    const pt = points[i];
+    if (pt.x - lastX >= gap && points[lastIdx].x - pt.x >= gap * 0.85) {
+      picked.push({ idx: i, pt });
+      lastX = pt.x;
+    }
+  }
+
+  if (picked[picked.length - 1].idx !== lastIdx) {
+    const endPt = points[lastIdx];
+    if (endPt.x - lastX < gap * 0.65 && picked.length > 1) {
+      picked[picked.length - 1] = { idx: lastIdx, pt: endPt };
+    } else {
+      picked.push({ idx: lastIdx, pt: endPt });
+    }
+  }
+
+  const total = picked.length;
+  return picked.map(({ pt }, i) => ({
+    ...pt,
+    labelAlign: xLabelAlign(i, total),
+  }));
+}
+
+export function xLabelStyle(pt, width) {
+  return {
+    left: `${(pt.x / width) * 100}%`,
+    textAlign: pt.labelAlign,
+    transform:
+      pt.labelAlign === "start"
+        ? "translateX(0)"
+        : pt.labelAlign === "end"
+          ? "translateX(-100%)"
+          : "translateX(-50%)",
+  };
+}
+
 export function formatSleepDuration(hours) {
   if (hours == null || Number.isNaN(hours)) return "—";
   const h = Math.floor(hours);

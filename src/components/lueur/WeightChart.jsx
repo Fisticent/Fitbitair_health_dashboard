@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { COLORS, formatChartDate } from "./chartUtils";
+import { COLORS, formatChartDate, pickVisibleXLabels, xLabelStyle } from "./chartUtils";
 import { seriesBaseline } from "../../utils/comparisons";
 
 const COLOR = COLORS.BLUE;
@@ -22,12 +22,6 @@ function niceTicks(min, max, count = 4) {
 function formatKg(v) {
   if (v == null) return "—";
   return Number.isInteger(v) ? `${v}` : v.toFixed(1);
-}
-
-function xLabelAlign(index, total) {
-  if (index === 0) return "start";
-  if (index === total - 1) return "end";
-  return "middle";
 }
 
 export function LueurWeightChart({
@@ -77,7 +71,6 @@ export function LueurWeightChart({
       x: xOf(r.t),
       y: yOf(r.value),
       isActive: activeWeightDate === r.date,
-      labelAlign: xLabelAlign(i, rows.length),
     }));
 
     let line = `M${coords[0].x.toFixed(1)} ${coords[0].y.toFixed(1)}`;
@@ -97,6 +90,11 @@ export function LueurWeightChart({
 
     return { pad, innerH, innerW, coords, line, area, yTicks, yOf, avg, avgY, baseY };
   }, [series, activeWeightDate, width, height]);
+
+  const xLabels = useMemo(
+    () => (layout ? pickVisibleXLabels(layout.coords, width) : []),
+    [layout, width],
+  );
 
   if (!layout) return null;
 
@@ -237,20 +235,11 @@ export function LueurWeightChart({
         </svg>
 
         <div className="lueur-weight-chart-xlabels" aria-hidden="true">
-          {coords.map((pt) => (
+          {xLabels.map((pt) => (
             <span
               key={pt.date}
               className="lueur-weight-chart-xlabel"
-              style={{
-                left: `${(pt.x / width) * 100}%`,
-                textAlign: pt.labelAlign,
-                transform:
-                  pt.labelAlign === "start"
-                    ? "translateX(0)"
-                    : pt.labelAlign === "end"
-                      ? "translateX(-100%)"
-                      : "translateX(-50%)",
-              }}
+              style={xLabelStyle(pt, width)}
             >
               {formatChartDate(pt.date)}
             </span>

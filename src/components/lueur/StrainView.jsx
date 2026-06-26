@@ -10,6 +10,7 @@ import {
   stepsZone,
   caloriesActiveZone,
   caloriesTotalZone,
+  sedentaryZone,
 } from "../../utils/metricStatus";
 import { ExercisePanel } from "../desktop/ExercisePanel";
 import { DeltaBadge } from "../desktop/DeltaBadge";
@@ -53,6 +54,14 @@ export function StrainView({
   const stepsStatus = stepsZone(stepsProgress);
   const caloriesActiveStatus = caloriesActiveZone(activeKcal, vitals?.calories_avg_14d);
   const caloriesTotalStatus = caloriesTotalZone(totalKcalEst, caloriesGoal);
+  const sedentary = vitals?.sedentary;
+  const sedentaryStatus = sedentaryZone(sedentary?.minutes);
+  const fmtSitMin = (m) => {
+    if (m == null) return null;
+    const h = Math.floor(m / 60);
+    const mm = Math.round(m % 60);
+    return h > 0 ? `${h}h${String(mm).padStart(2, "0")}` : `${mm} min`;
+  };
 
   const strainTrend = (history || []).slice(-7).map((d) => ({
     date: d.date,
@@ -235,6 +244,18 @@ export function StrainView({
             }
             status={totalKcalEst != null ? caloriesTotalStatus.label : null}
             statusZone={caloriesTotalStatus.zone}
+          />
+          <StatTile
+            label="Temps assis"
+            tipId="sedentary"
+            value={sedentary?.minutes != null ? fmtSitMin(sedentary.minutes) : null}
+            meta={
+              sedentary?.longest_min != null ? (
+                <>plus longue plage : {fmtSitMin(sedentary.longest_min)}</>
+              ) : null
+            }
+            status={sedentary?.minutes != null ? sedentaryStatus.label : null}
+            statusZone={sedentaryStatus.zone}
           />
         </StatGrid>
 

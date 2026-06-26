@@ -17,6 +17,8 @@ export const METRIC_TOOLTIPS = {
     "FC repos (bpm) : fréquence cardiaque au repos. Une valeur basse et stable est généralement un bon signe ; une hausse vs ta moyenne peut signaler fatigue ou stress.",
   skin_temp:
     "Température cutanée nocturne (°C) : mesurée au poignet pendant le sommeil, exprimée en écart à ta baseline personnelle. Plus chaud que ta normale = signal possible de stress, début de maladie, cycle hormonal ou récupération incomplète. Intègre la récupération et le stress (3ᵉ signal, comme Oura/Whoop).",
+  sedentary:
+    "Temps assis : durée éveillée quasi immobile détectée par le Fitbit. La position assise prolongée est un risque cardiométabolique indépendant de l'exercice. La « plus longue plage » compte le plus : rester 3 h sans bouger est pire que 3×1 h espacées. Vise des pauses régulières.",
   stress:
     "Moniteur stress (indice 0–100, estimation) : combine la baisse de VFC (signal principal, sur ln-VFC comme WHOOP) et l'élévation de FC diurne vs repos, chacune comparée à ta baseline ~14 jours. L'élévation de FC est atténuée les jours de forte charge pour ne pas confondre sport et stress. Couche « aiguë » ; la dérive long terme est suivie par le moniteur santé. Pas un capteur de stress réel.",
   x_age:

@@ -234,6 +234,11 @@ def _fetch_raw_locked() -> dict:
             lambda: hc.list_data_points_optional("daily-sleep-temperature-derivations"),
             errors,
         ),
+        "sedentary_pts": _safe_fetch(
+            "sedentary",
+            lambda: hc.list_recent_data_points_optional("sedentary-period", days=30, max_pages=10),
+            errors,
+        ),
         "rhr_pts": _safe_fetch("rhr", lambda: hc.list_data_points("daily-resting-heart-rate"), errors),
         "sleep_pts": _safe_fetch("sleep", lambda: hc.list_data_points("sleep", max_pages=8), errors),
         "resp_pts": _safe_fetch("resp", lambda: hc.list_data_points("daily-respiratory-rate"), errors),
@@ -292,6 +297,7 @@ def parse_raw(raw: dict) -> dict:
         "profile": raw["profile"],
         "hrv": hrv,
         "skin_temp": p.parse_skin_temp_daily(raw.get("skin_temp_pts") or []),
+        "sedentary": p.parse_sedentary_daily(raw.get("sedentary_pts") or []),
         "rhr": p.parse_daily_rhr(raw["rhr_pts"]),
         "sleep": p.parse_sleep_sessions(raw["sleep_pts"]),
         "resp": p.parse_respiratory_daily(raw["resp_pts"]),
@@ -392,6 +398,7 @@ def build_dashboard(
     body_fat = parsed["body_fat"]
     spo2 = parsed["spo2"]
     skin_temp = parsed["skin_temp"]
+    sedentary = parsed["sedentary"]
 
     all_dates = sorted(
         set(hrv)
@@ -527,6 +534,7 @@ def build_dashboard(
         {"id": "load_balance", "name": "Équilibre de charge", "status": "calibrating" if load_balance.get("status") == "calibrating" else "active", "has_data": load_balance.get("ratio") is not None},
         {"id": "hrv_balance", "name": "HRV Balance", "status": "calibrating" if hrv_balance.get("status") == "calibrating" else "active", "has_data": hrv_balance.get("score") is not None},
         {"id": "skin_temp", "name": "Température cutanée", "status": "active", "has_data": skin_temp.get(focus) is not None},
+        {"id": "sedentary", "name": "Temps assis", "status": "active", "has_data": sedentary.get(focus) is not None},
     ]
 
     return {
@@ -576,6 +584,7 @@ def build_dashboard(
             "respiratory": resp.get(focus),
             "spo2": spo2.get(focus),
             "skin_temp": skin_temp.get(focus),
+            "sedentary": sedentary.get(focus),
             "active_calories": calories.get("active_kcal"),
             "bmr_kcal": calories.get("bmr_kcal"),
             "total_calories_est": calories.get("total_est_kcal"),

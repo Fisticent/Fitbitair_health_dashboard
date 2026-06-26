@@ -79,6 +79,15 @@ export function stressZoneFromLevel(level, label) {
   return label ? { ...base, label } : base;
 }
 
+/** Daily sedentary (awake, near-motionless) time — more sitting is worse. */
+export function sedentaryZone(minutes) {
+  if (minutes == null) return { zone: "neutral", label: "—" };
+  const h = Number(minutes) / 60;
+  if (h < 6) return { zone: "green", label: "Peu assis" };
+  if (h < 9) return { zone: "yellow", label: "Modéré" };
+  return { zone: "orange", label: "Très assis" };
+}
+
 export function stepsZone(progressPct) {
   if (progressPct == null) return { zone: "neutral", label: "—" };
   const n = Number(progressPct);

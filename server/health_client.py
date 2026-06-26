@@ -126,6 +126,7 @@ _FILTER_PREFIX: dict[str, str] = {
     "distance": "distance",
     "exercise": "exercise",
     "active-energy-burned": "active_energy_burned",
+    "sedentary-period": "sedentary_period",
     "heart-rate-variability": "heart_rate_variability",
     "oxygen-saturation": "oxygen_saturation",
     "daily-oxygen-saturation": "daily_oxygen_saturation",

@@ -85,6 +85,35 @@ def parse_daily_hrv_aggregate(points: list[dict]) -> dict[str, float]:
     return out
 
 
+def parse_sedentary_daily(points: list[dict]) -> dict[str, dict[str, float]]:
+    """Sedentary (awake but near-motionless) time per civil day.
+
+    Returns total sedentary minutes and the longest single uninterrupted
+    stretch — the latter matters most for cardiometabolic risk (3h unbroken
+    sitting is worse than the same total split up).
+    """
+    agg: dict[str, dict[str, float]] = {}
+    for p in points:
+        sp = p.get("sedentaryPeriod")
+        if not sp:
+            continue
+        interval = sp.get("interval") or {}
+        day = interval_day(interval)
+        start, end = interval.get("startTime"), interval.get("endTime")
+        if not day or not start or not end:
+            continue
+        mins = parse_iso_duration(start, end)
+        if mins <= 0:
+            continue
+        d = agg.setdefault(day, {"minutes": 0.0, "longest_min": 0.0})
+        d["minutes"] += mins
+        d["longest_min"] = max(d["longest_min"], mins)
+    for d in agg.values():
+        d["minutes"] = round(d["minutes"])
+        d["longest_min"] = round(d["longest_min"])
+    return agg
+
+
 def parse_skin_temp_daily(points: list[dict]) -> dict[str, dict[str, float]]:
     """Nightly skin-temperature derivation vs personal baseline (°C).
 

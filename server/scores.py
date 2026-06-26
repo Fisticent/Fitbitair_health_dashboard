@@ -16,6 +16,17 @@ def z_score(value: float, history: list[float]) -> float:
     return (value - mu) / sigma
 
 
+def _pct_from_z(z: float) -> int:
+    """Map a personal-baseline z-score to a 0–100 score via the normal CDF.
+
+    Reads off "where today sits in your own distribution": z 0 → 50, +0.44 →
+    ~67 (top third → green), −0.44 → ~33. Uses the full 0–100 range at realistic
+    z values instead of clustering near 50 like a linear 50+k·z map — Oura/WHOOP
+    present recovery/readiness as a personal percentile for the same reason.
+    """
+    return max(0, min(100, round(100 * 0.5 * (1 + math.erf(z / math.sqrt(2))))))
+
+
 def recovery_zone(pct: float) -> str:
     if pct >= 67:
         return "green"
@@ -28,14 +39,42 @@ def recovery_color(zone: str) -> str:
     return {"green": "#00D68F", "yellow": "#FFB020", "red": "#FF4D4D"}.get(zone, "#888")
 
 
-def sleep_need_hours(prior_strain: float = 0.0) -> float:
-    """Sleep need in hours, rising with the previous day's strain (0–100 %).
+def sleep_need_hours(prior_strain: float = 0.0, recent_debt_h: float = 0.0) -> float:
+    """Sleep need in hours, rising with the previous day's strain (0–100 %) and
+    with accumulated sleep debt from recent nights.
 
     Single source of truth shared by recovery and the sleep score so the
     two never disagree on the target.
     """
     # ~57 % ≈ ancien seuil 12/21 — même courbe de besoin de sommeil.
-    return 7.5 + max(0, (prior_strain - 57) * 0.0525)
+    base = 7.5 + max(0, (prior_strain - 57) * 0.0525)
+    # Repay part of the recent shortfall, à la WHOOP: ~50 % of accrued debt,
+    # capped at +1 h so a rough week doesn't push the target out of reach.
+    return base + min(1.0, max(0.0, recent_debt_h) * 0.5)
+
+
+def recent_sleep_debt_h(
+    day: str, sleep: dict[str, dict], baseline_h: float = 7.5, nights: int = 3
+) -> float:
+    """Accumulated sleep shortfall vs a baseline over the prior N nights (hours).
+
+    Feeds ``sleep_need_hours`` so tonight's target rises after short nights,
+    mirroring how WHOOP rolls recent debt into sleep need. Missing nights
+    simply don't contribute.
+    """
+    from datetime import date as date_type, timedelta
+
+    try:
+        f = date_type.fromisoformat(day)
+    except ValueError:
+        return 0.0
+    debt = 0.0
+    for i in range(1, nights + 1):
+        s = sleep.get((f - timedelta(days=i)).isoformat())
+        if not s:
+            continue
+        debt += max(0.0, baseline_h - s.get("asleep_min", 0) / 60)
+    return round(debt, 2)
 
 
 def compute_recovery(
@@ -45,6 +84,7 @@ def compute_recovery(
     sleep: dict[str, dict],
     resp: dict[str, float],
     prior_strain: float = 0.0,
+    recent_debt_h: float = 0.0,
 ) -> dict[str, Any]:
     dates = sorted(set(hrv) | set(rhr) | set(sleep))
     # Keep requested day even if metrics are still syncing in
@@ -59,28 +99,42 @@ def compute_recovery(
     sleep_val = sleep.get(day, {}).get("asleep_min", 0) / 60
     resp_val = resp.get(day)
 
-    need = sleep_need_hours(prior_strain)
+    need = sleep_need_hours(prior_strain, recent_debt_h)
     sleep_sigma = statistics.stdev(sleep_hist) if len(sleep_hist) > 2 else 1.0
 
     # Only weight components that actually have data, then renormalise the
     # weights — a partial day shouldn't be dragged toward 50% by the absent
     # metrics, and missing data shouldn't be confused with a bad value.
+    # Each autonomic signal uses the same robust median/MAD basis as the stress
+    # proxy, and HRV is z-scored on ln(RMSSD) (lnRMSSD) since it is log-normally
+    # distributed — one consistent treatment of HRV across every screen.
     weighted: list[tuple[float, float]] = []
-    if hrv_val and hrv_hist:
-        weighted.append((0.40, z_score(hrv_val, hrv_hist)))
+    if hrv_val and hrv_val > 0 and hrv_hist:
+        z_hrv = _robust_z(
+            math.log(hrv_val),
+            [math.log(h) for h in hrv_hist if h > 0],
+            floor=0.12,
+            min_n=3,
+        )
+        if z_hrv is not None:
+            weighted.append((0.40, z_hrv))
     if rhr_val and rhr_hist:
-        weighted.append((0.25, -z_score(rhr_val, rhr_hist)))
+        z_rhr = _robust_z(rhr_val, rhr_hist, floor=2.0, min_n=3)
+        if z_rhr is not None:
+            weighted.append((0.25, -z_rhr))  # lower resting HR is better
     if sleep_val:
         weighted.append((0.25, (sleep_val - need) / (sleep_sigma or 1.0)))
     if resp_val and resp_hist:
-        weighted.append((0.10, -z_score(resp_val, resp_hist)))
+        z_resp = _robust_z(resp_val, resp_hist, floor=0.5, min_n=3)
+        if z_resp is not None:
+            weighted.append((0.10, -z_resp))  # lower respiratory rate is better
 
     if weighted:
         total_w = sum(w for w, _ in weighted)
         z_composite = sum(w * z for w, z in weighted) / total_w
     else:
         z_composite = 0.0
-    pct = max(0, min(100, round(50 + 15 * z_composite)))
+    pct = _pct_from_z(z_composite)
 
     return {
         "date": day,
@@ -172,12 +226,27 @@ def compute_strain(
 
 def compute_sleep_score(day: str, sleep: dict[str, dict], need: float = 7.5) -> dict[str, Any]:
     s = sleep.get(day, {})
-    asleep_h = s.get("asleep_min", 0) / 60
+    asleep_min = s.get("asleep_min", 0)
+    asleep_h = asleep_min / 60
     perf_dur = min(100, (asleep_h / need) * 100) if need else 0
-    deep_pct = (s.get("deep", 0) / max(s.get("asleep_min", 1), 1)) * 100
-    rem_pct = (s.get("rem", 0) / max(s.get("asleep_min", 1), 1)) * 100
+    deep_pct = (s.get("deep", 0) / max(asleep_min, 1)) * 100
+    rem_pct = (s.get("rem", 0) / max(asleep_min, 1)) * 100
     perf_qual = min(100, 0.5 * min(100, deep_pct / 15 * 100) + 0.5 * min(100, rem_pct / 22 * 100))
-    score = round(0.7 * perf_dur + 0.3 * perf_qual)
+
+    # Oura/Garmin-style weighted blend. Duration leads; efficiency and onset
+    # latency join when the night actually carries that data, with the weights
+    # renormalised so their absence never drags the score down.
+    parts: list[tuple[float, float]] = [(0.55, perf_dur), (0.20, perf_qual)]
+    efficiency = s.get("efficiency")
+    if efficiency:
+        # ≥90 % of time-in-bed spent asleep = full marks.
+        parts.append((0.15, min(100, efficiency / 90 * 100)))
+    latency = s.get("latency_min")
+    if latency is not None:
+        # ≤15 min to fall asleep is ideal; each extra minute costs ~2 pts.
+        parts.append((0.10, max(0, 100 - max(0, latency - 15) * 2)))
+    total_w = sum(w for w, _ in parts)
+    score = round(sum(w * v for w, v in parts) / total_w)
 
     total_min = s.get("total_min", 0)
     debt_hours = round(max(0.0, need - asleep_h), 2) if need else None
@@ -425,12 +494,18 @@ def compute_hrv_balance(
         return {"score": None, "status": "calibrating", "label": "En calibrage",
                 "days": len(dates), "days_needed": min_base}
 
-    base = [hrv[d] for d in dates[-base_days:]]
-    recent = [hrv[d] for d in dates[-recent_days:]]
-    mu = statistics.mean(base)
-    sigma = statistics.stdev(base) if len(base) > 2 else 1.0
-    z = (statistics.mean(recent) - mu) / (sigma or 1.0)
-    score = max(0, min(100, round(50 + 20 * z)))
+    base_raw = [hrv[d] for d in dates[-base_days:]]
+    recent_raw = [hrv[d] for d in dates[-recent_days:]]
+    # z on ln(RMSSD) (log-normal) — same HRV treatment as recovery/stress.
+    base_ln = [math.log(v) for v in base_raw if v > 0]
+    recent_ln = [math.log(v) for v in recent_raw if v > 0]
+    if not base_ln or not recent_ln:
+        return {"score": None, "status": "calibrating", "label": "En calibrage",
+                "days": len(dates), "days_needed": min_base}
+    mu = statistics.mean(base_ln)
+    sigma = statistics.stdev(base_ln) if len(base_ln) > 2 else 1.0
+    z = (statistics.mean(recent_ln) - mu) / (sigma or 1.0)
+    score = _pct_from_z(z)
     if score >= 65:
         label = "Au-dessus de ta base"
     elif score >= 35:
@@ -442,25 +517,61 @@ def compute_hrv_balance(
         "score": score,
         "status": "ok",
         "label": label,
-        "recent_avg": round(statistics.mean(recent)),
-        "baseline_avg": round(mu),
+        "recent_avg": round(statistics.mean(recent_raw)),
+        "baseline_avg": round(statistics.mean(base_raw)),
         "z": round(z, 2),
     }
+
+
+def _robust_z(value: float, history: list[float], floor: float, min_n: int = 10) -> float | None:
+    """Median/MAD z-score — resists outliers and tiny samples far better than
+    mean/σ (a single odd day can shrink σ and blow a normal day up to a huge z).
+
+    ``floor`` clamps the scale in the metric's own units so a nearly-flat
+    history can't amplify normal variation. Returns ``None`` below ``min_n``.
+    """
+    h = history[-14:]  # ~14-day rolling baseline, à la WHOOP Stress Monitor
+    if len(h) < min_n:
+        return None
+    mu = statistics.median(h)
+    mad = statistics.median([abs(x - mu) for x in h])
+    sigma = 1.4826 * mad if mad > 0 else (statistics.pstdev(h) or floor)
+    return (value - mu) / max(sigma, floor)
+
+
+def _exertion_factor(strain_score: float | None) -> float:
+    """Shrink exercise-driven HR elevation toward 0 on hard-training days.
+
+    WHOOP/Oura/Fitbit all discount exertion so a workout isn't read as stress.
+    Our nocturnal HRV is unaffected by daytime exercise, but daytime-HR
+    elevation is — so on a high-strain day we damp only the HR signal:
+    strain 0 → 1.0 (no damping), strain 100 → 0.3.
+    """
+    if not strain_score or strain_score <= 0:
+        return 1.0
+    return max(0.3, 1.0 - 0.7 * min(100.0, strain_score) / 100.0)
 
 
 def compute_stress_proxy(
     day: str,
     hr_avg: dict[str, float],
     rhr: dict[str, float],
+    hrv: dict[str, float] | None = None,
+    strain_by_day: dict[str, float] | None = None,
 ) -> dict[str, Any]:
-    """Proxy stress from daytime-HR elevation over resting, **relative to the
-    person's own baseline**.
+    """Relative acute-stress index from autonomic signals vs the person's own
+    baseline — the "Daytime Stress" / "Responsiveness" layer of Oura/Whoop/Fitbit.
 
-    A daytime HR 20–30% above resting is normal physiology, so fixed absolute
-    thresholds flag almost everyone as "high". Instead we z-score today's
-    elevation against the prior ~30 days, so "Élevé" means *unusually high for
-    you today*. Until enough history exists we fall back to wide absolute
-    thresholds (and say so via ``basis``).
+    Combines two signals, each z-scored against the prior ~14 days so the index
+    means *unusual for you today* rather than flagging normal physiology:
+      • HRV depression (primary, weight 0.6) — z-scored on ``ln(HRV)`` (lnRMSSD,
+        like WHOOP) for stable day-to-day comparison; stress rises as HRV falls.
+      • Daytime-HR elevation over resting (0.4) — damped by today's strain so a
+        workout isn't misread as stress (motion compensation).
+    A logistic squashes the combined z into 0–100, so a clearly elevated day
+    lands ~70 (Élevé) instead of pegging at 100 (the old linear 50+20·z hit the
+    ceiling at z≥2.5). Higher = more stress. The long-term/chronic layer lives
+    separately in ``health_monitor`` (HRV drift), mirroring Oura's split.
     """
     avg = hr_avg.get(day)
     baseline = rhr.get(day)
@@ -470,57 +581,99 @@ def compute_stress_proxy(
             "score": None,
             "label": "Données insuffisantes",
             "level": None,
+            "status": "calibrating",
             "proxy_pct": None,
             "basis": None,
+            "days": 0,
+            "days_needed": 10,
+            "progress": 0.0,
         }
 
     proxy_pct = round((avg - baseline) / baseline * 100, 1)
 
-    # Build the personal history of daily elevation (days strictly before `day`).
-    elevations: list[float] = []
+    # --- HR-elevation signal vs personal baseline (days strictly before `day`) ---
+    elev_hist: list[float] = []
     for d in sorted(set(hr_avg) & set(rhr)):
         if d >= day:
             continue
         a, b = hr_avg[d], rhr[d]
         if a and b:
-            elevations.append((a - b) / b * 100)
-    elevations = elevations[-30:]
+            elev_hist.append((a - b) / b * 100)
 
-    if len(elevations) >= 7:
-        mu = statistics.mean(elevations)
-        sigma = statistics.stdev(elevations) or 1.0
-        z = (proxy_pct - mu) / sigma
+    z_hr = _robust_z(proxy_pct, elev_hist, floor=3.0)
+    if z_hr is not None and z_hr > 0:
+        # Only positive (stress-direction) HR elevation can be exercise-driven.
+        z_hr *= _exertion_factor((strain_by_day or {}).get(day))
+
+    # --- HRV-depression signal vs personal baseline, on ln(HRV) (lnRMSSD) ---
+    z_hrv = None
+    ln_hist: list[float] = []
+    if hrv:
+        ln_hist = [math.log(hrv[d]) for d in sorted(hrv) if d < day and hrv.get(d) and hrv[d] > 0]
+        if hrv.get(day) and hrv[day] > 0:
+            # Floor 0.12 in ln-space ≈ a 12% HRV swing = 1σ minimum (typical lnRMSSD
+            # day-to-day CV), so a very regular sleeper can't blow normal noise up.
+            zr = _robust_z(math.log(hrv[day]), ln_hist, floor=0.12)
+            if zr is not None:
+                z_hrv = -zr  # stress rises as HRV falls
+
+    parts: list[tuple[float, float]] = []
+    if z_hrv is not None:
+        parts.append((0.6, z_hrv))
+    if z_hr is not None:
+        parts.append((0.4, z_hr))
+
+    if parts:
+        total_w = sum(w for w, _ in parts)
+        z = sum(w * v for w, v in parts) / total_w
+        score = round(100 / (1 + math.exp(-0.85 * z)))
         if z < -0.5:
             label, level = "Bas", "low"
         elif z < 1.0:
             label, level = "Modéré", "medium"
         else:
             label, level = "Élevé", "high"
-        score = min(100, max(0, round(50 + 20 * z)))
         basis = "personal"
-        baseline_pct = round(mu, 1)
+        status = "ok"
+        baseline_pct = round(statistics.median(elev_hist), 1) if elev_hist else None
     else:
-        # Cold start: wide absolute thresholds calibrated to normal physiology.
+        # Cold start: bounded logistic on absolute elevation (~25% = neutral),
+        # so even before history exists the score never pegs at 100. Flagged
+        # ``calibrating`` so the UI can show a provisional estimate, like Oura/
+        # WHOOP withhold a confident daytime-stress read until a baseline exists.
+        score = round(100 / (1 + math.exp(-0.06 * (proxy_pct - 25))))
         if proxy_pct < 20:
             label, level = "Bas", "low"
         elif proxy_pct < 35:
             label, level = "Modéré", "medium"
         else:
             label, level = "Élevé", "high"
-        score = min(100, max(0, round(proxy_pct * 2.2)))
         basis = "absolute"
+        status = "calibrating"
         baseline_pct = None
+
+    # Calibration progress toward the personal-baseline path (≥10 days of either signal).
+    days_needed = 10
+    days_have = min(days_needed, max(len(elev_hist), len(ln_hist)))
 
     return {
         "date": day,
         "score": score,
         "label": label,
         "level": level,
+        "status": status,
         "proxy_pct": proxy_pct,
         "hr_avg": round(avg, 1),
         "rhr_baseline": baseline,
         "baseline_pct": baseline_pct,
         "basis": basis,
+        "days": days_have,
+        "days_needed": days_needed,
+        "progress": round(days_have / days_needed, 2),
+        "components": {
+            "hrv_z": round(z_hrv, 2) if z_hrv is not None else None,
+            "hr_z": round(z_hr, 2) if z_hr is not None else None,
+        },
     }
 
 

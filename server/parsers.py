@@ -354,12 +354,14 @@ def parse_zone_minutes(points: list[dict]) -> dict[str, dict[str, int]]:
     """Per day: zone name -> minutes."""
     out: dict[str, dict[str, int]] = {}
     # Out-of-zone time is rest/light activity, not cardiovascular load → 0.
-    # The remaining coefficients model relative intensity of each HR zone.
+    # Geometric ramp (×2 per zone) approximating TRIMP's exponential weighting
+    # of intensity — a minute at peak costs far more than a minute fat-burning.
+    # CARDIO stays at 3 so the overall load scale (and STRAIN_LOAD_TAU) holds.
     zone_coeff = {
         "OUT_OF_ZONE": 0,
-        "FAT_BURN": 2,
+        "FAT_BURN": 1.5,
         "CARDIO": 3,
-        "PEAK": 4,
+        "PEAK": 6,
     }
     zone_keys = {
         "FAT_BURN": "fat_burn",

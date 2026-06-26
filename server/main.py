@@ -401,13 +401,17 @@ def build_dashboard(
 
     prior_day = (date_type.fromisoformat(focus) - timedelta(days=1)).isoformat()
     strain_kw = _strain_ctx(parsed)
-    prior_strain = s.compute_strain(prior_day, zones, **strain_kw)["score"]
+    # Strain per day, computed once and reused (stress motion-compensation,
+    # history series, and ACWR load balance all consume it).
+    strain_by_day = {d: s.compute_strain(d, zones, **strain_kw)["score"] for d in all_dates}
+    prior_strain = strain_by_day.get(prior_day, s.compute_strain(prior_day, zones, **strain_kw)["score"])
 
-    recovery = s.compute_recovery(focus, hrv, rhr, sleep, resp, prior_strain)
+    debt = s.recent_sleep_debt_h(focus, sleep)
+    recovery = s.compute_recovery(focus, hrv, rhr, sleep, resp, prior_strain, debt)
     strain = s.compute_strain(focus, zones, **strain_kw)
-    sleep_score = s.compute_sleep_score(focus, sleep, need=s.sleep_need_hours(prior_strain))
+    sleep_score = s.compute_sleep_score(focus, sleep, need=s.sleep_need_hours(prior_strain, debt))
     monitor = s.health_monitor(focus, hrv, rhr, resp, spo2)
-    stress = s.compute_stress_proxy(focus, hr_avg, rhr)
+    stress = s.compute_stress_proxy(focus, hr_avg, rhr, hrv, strain_by_day)
     x_age = s.compute_physiological_age(
         focus, age, rhr, hrv, sleep, steps, zones, vo2, body_fat, sex=sex
     )
@@ -419,11 +423,12 @@ def build_dashboard(
         )["score"]
         ex_d = exercise.get(d, {})
         w_date_d, w_kg_d = s.nearest_metric(weight, d)
-        sleep_row = s.compute_sleep_score(d, sleep, need=s.sleep_need_hours(ps))
+        ps_debt = s.recent_sleep_debt_h(d, sleep)
+        sleep_row = s.compute_sleep_score(d, sleep, need=s.sleep_need_hours(ps, ps_debt))
         history.append(
             {
                 "date": d,
-                "recovery": s.compute_recovery(d, hrv, rhr, sleep, resp, ps)["score"],
+                "recovery": s.compute_recovery(d, hrv, rhr, sleep, resp, ps, ps_debt)["score"],
                 "strain": s.compute_strain(d, zones, **strain_kw)["score"],
                 "sleep": sleep_row["score"],
                 "sleep_hours": sleep_row["hours"],
@@ -435,7 +440,7 @@ def build_dashboard(
                 "rhr": rhr.get(d),
                 "respiratory": resp.get(d),
                 "spo2": spo2.get(d),
-                "stress": s.compute_stress_proxy(d, hr_avg, rhr).get("score"),
+                "stress": s.compute_stress_proxy(d, hr_avg, rhr, hrv, strain_by_day).get("score"),
                 "exercise_minutes": ex_d.get("minutes", 0),
                 "exercise_count": ex_d.get("count", 0),
                 "weight": round(w_kg_d, 1) if w_kg_d is not None else None,
@@ -458,13 +463,7 @@ def build_dashboard(
     pace = s.compute_pace_of_aging(age_history)
 
     # Advanced signals (Oura/Whoop-style), all derived from existing data.
-    focus_d = date_type.fromisoformat(focus)
-    # 42-day window: 28-day chronic baseline + 14 days of ACWR series points.
-    strain_by_day = {
-        d: s.compute_strain(d, zones, **strain_kw)["score"]
-        for d in all_dates
-        if 0 <= (focus_d - date_type.fromisoformat(d)).days < 42
-    }
+    # compute_load_balance windows strain_by_day internally (28d chronic + 14d series).
     sleep_regularity = s.compute_sleep_regularity(focus, sleep)
     load_balance = s.compute_load_balance(focus, strain_by_day)
     hrv_balance = s.compute_hrv_balance(focus, hrv)

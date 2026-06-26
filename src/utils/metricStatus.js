@@ -68,15 +68,6 @@ export function strainRecoveryFit(strainScore, recoveryZone) {
   return { zone: "red", label: "Réduis l'effort" };
 }
 
-export function stressZone(score) {
-  if (score == null) return { zone: "neutral", label: "—" };
-  const n = Number(score);
-  // Score is centred on 50 = personal baseline (see compute_stress_proxy).
-  if (n < 40) return { zone: "green", label: "Bas" };
-  if (n < 70) return { zone: "yellow", label: "Modéré" };
-  return { zone: "red", label: "Élevé" };
-}
-
 /** Zone from the backend's own level so colour always matches its label. */
 export function stressZoneFromLevel(level, label) {
   const map = {

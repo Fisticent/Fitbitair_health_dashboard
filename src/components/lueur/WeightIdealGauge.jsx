@@ -34,7 +34,6 @@ export function WeightIdealGauge({ weightKg, ideal }) {
       activeIndex={activeIndex(weightKg, minKg, maxKg)}
       ariaLabel={`Poids ${weightKg} kg — cible ${minKg} à ${maxKg} kg`}
       embedded
-      legendDense
     />
   );
 }

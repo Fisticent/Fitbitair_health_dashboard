@@ -1473,20 +1473,15 @@ body {
 }
 
 .lueur-body-comp-gauge-slot .lueur-zone-gauge-legend {
-  min-height: 40px;
+  min-height: 32px;
   align-content: start;
 }
 
-.lueur-zone-gauge--legend-dense .lueur-zone-gauge-legend {
-  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  gap: 6px 10px;
-  min-height: 34px;
-}
-
-.lueur-zone-gauge--legend-dense .lueur-zone-gauge-legend-item {
-  flex-direction: row;
-  gap: 5px;
-  font-size: 9px;
+.lueur-body-comp-gauge-slot .lueur-zone-gauge-legend-item {
+  font-size: 8px;
+  line-height: 1.15;
+  padding: 0 2px;
+  word-break: break-word;
 }
 
 .lueur-body-comp-hero .lueur-body-comp-value,

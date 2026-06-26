@@ -34,7 +34,6 @@ export function BmiGauge({ bmi, category }) {
       activeIndex={activeIndex}
       ariaLabel={`IMC ${bmi} — ${category || SEGMENTS[activeIndex]?.label || ""}`}
       embedded
-      legendDense
     />
   );
 }

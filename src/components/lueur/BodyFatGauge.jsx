@@ -37,7 +37,6 @@ export function BodyFatGauge({ value, ideal }) {
       activeIndex={activeIndex(value, minPct, maxPct, elevatedTo)}
       ariaLabel={`Masse grasse ${value} % — cible ${minPct} à ${maxPct} %`}
       embedded
-      legendDense
     />
   );
 }

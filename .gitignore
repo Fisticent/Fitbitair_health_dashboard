@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.vite/
+__pycache__/
+*.py[cod]
+.Python
+.env
+.env.*
+*.local
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/

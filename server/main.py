@@ -1,0 +1,600 @@
+"""FastAPI backend — Google Health + X-Scores."""
+
+from __future__ import annotations
+
+import threading
+import time
+from datetime import date as date_type, datetime, timedelta, timezone
+
+from fastapi import FastAPI, HTTPException, Query
+
+from fastapi.middleware.cors import CORSMiddleware
+
+import health_client as hc
+import parsers as p
+import scores as s
+
+app = FastAPI(title="X-Health API", version="0.2.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+_raw_cache: dict | None = None
+_synced_at: str | None = None
+_fetch_errors: list[str] = []
+_cache_built_at: float = 0.0
+_CACHE_TTL_SECONDS = 900  # auto-refresh after 15 min so data never goes stale forever
+_fetch_lock = threading.Lock()
+
+
+def _today() -> str:
+    return date_type.today().isoformat()
+
+
+def _derive_age(profile: dict) -> int:
+    """Age from the Health profile, computed from date of birth when present.
+
+    The API typically returns a date of birth, not an ``age`` field, so a naive
+    ``profile.get("age", 30)`` silently falls back to 30 and skews BMR and the
+    physiological-age baseline. Handle both shapes defensively.
+    """
+    age = profile.get("age")
+    if isinstance(age, (int, float)) and age > 0:
+        return int(age)
+
+    dob = profile.get("dateOfBirth") or profile.get("birthDate") or profile.get("dob")
+    born: date_type | None = None
+    if isinstance(dob, dict) and dob.get("year"):
+        try:
+            born = date_type(int(dob["year"]), int(dob.get("month", 1)), int(dob.get("day", 1)))
+        except (ValueError, TypeError):
+            born = None
+    elif isinstance(dob, str) and len(dob) >= 4:
+        try:
+            born = date_type.fromisoformat(dob[:10])
+        except ValueError:
+            born = None
+
+    if born is not None:
+        today = date_type.today()
+        return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
+
+    return 30
+
+
+def _derive_sex(profile: dict) -> str:
+    """Normalise the profile's sex/gender to 'male' | 'female' | 'unknown'."""
+    raw = profile.get("sex") or profile.get("gender") or profile.get("biologicalSex")
+    if not isinstance(raw, str):
+        return "unknown"
+    val = raw.strip().lower()
+    if val in ("male", "m", "homme", "man"):
+        return "male"
+    if val in ("female", "f", "femme", "woman"):
+        return "female"
+    return "unknown"
+
+
+def _extract_dob_iso(profile: dict) -> str | None:
+    dob = profile.get("dateOfBirth") or profile.get("birthDate") or profile.get("dob")
+    if isinstance(dob, dict) and dob.get("year"):
+        try:
+            return date_type(
+                int(dob["year"]), int(dob.get("month", 1)), int(dob.get("day", 1))
+            ).isoformat()
+        except (ValueError, TypeError):
+            return None
+    if isinstance(dob, str) and len(dob) >= 10:
+        try:
+            return date_type.fromisoformat(dob[:10]).isoformat()
+        except ValueError:
+            return None
+    return None
+
+
+def _merge_profile_overrides(profile: dict, overrides: dict | None) -> dict:
+    if not overrides:
+        return profile
+    merged = dict(profile)
+    if overrides.get("sex") in ("male", "female"):
+        merged["sex"] = overrides["sex"]
+    if overrides.get("dob"):
+        merged["dateOfBirth"] = overrides["dob"]
+    return merged
+
+
+def _parse_profile_overrides(
+    sex: str | None = None,
+    dob: str | None = None,
+    height_cm: float | None = None,
+    weight_kg: float | None = None,
+) -> dict:
+    out: dict = {}
+    if sex in ("male", "female"):
+        out["sex"] = sex
+    if dob:
+        try:
+            out["dob"] = date_type.fromisoformat(dob[:10]).isoformat()
+        except ValueError:
+            pass
+    if height_cm is not None and 100 <= height_cm <= 250:
+        out["height_cm"] = round(height_cm)
+    if weight_kg is not None and 30 <= weight_kg <= 300:
+        out["weight_kg"] = round(weight_kg, 1)
+    return out
+
+
+def _apply_body_overrides(body: dict, overrides: dict) -> dict:
+    result = dict(body)
+    if overrides.get("height_cm"):
+        h_cm = overrides["height_cm"]
+        result["height_cm"] = h_cm
+        result["height_m"] = round(h_cm / 100, 2)
+        result["height_date"] = None
+    if overrides.get("weight_kg"):
+        result["weight_kg"] = overrides["weight_kg"]
+        result["weight_date"] = None
+    if result.get("weight_kg") and result.get("height_m"):
+        result["bmi"] = round(result["weight_kg"] / (result["height_m"] ** 2), 1)
+        result["bmi_category"] = s.bmi_category(result["bmi"])
+    return result
+
+
+def _safe_fetch(label: str, fn, errors: list[str]):
+    try:
+        return fn()
+    except FileNotFoundError:
+        raise
+    except hc.PartialDataError as exc:
+        errors.append(
+            f"{label}: sync partielle ({exc.cause}) — {len(exc.points)} points conservés"
+        )
+        return exc.points
+    except Exception as exc:
+        errors.append(f"{label}: {exc}")
+        return []
+
+
+def _cache_fresh() -> bool:
+    return _raw_cache is not None and (time.monotonic() - _cache_built_at) < _CACHE_TTL_SECONDS
+
+
+def fetch_raw(force: bool = False) -> dict:
+    global _raw_cache, _synced_at, _fetch_errors, _cache_built_at
+
+    if not force and _cache_fresh():
+        return _raw_cache  # type: ignore[return-value]
+
+    # Serialise fetches so concurrent requests don't all hit the API at once.
+    with _fetch_lock:
+        # Re-check: another thread may have populated the cache while we waited.
+        if not force and _cache_fresh():
+            return _raw_cache  # type: ignore[return-value]
+        return _fetch_raw_locked()
+
+
+def _fetch_raw_locked() -> dict:
+    global _raw_cache, _synced_at, _fetch_errors, _cache_built_at
+
+    errors: list[str] = []
+    try:
+        profile = hc.get_profile()
+    except FileNotFoundError:
+        raise
+    except Exception as exc:
+        raise FileNotFoundError(f"Profil Google Health inaccessible: {exc}") from exc
+
+    _raw_cache = {
+        "profile": profile,
+        "hrv_pts": _safe_fetch("hrv", lambda: hc.list_data_points("heart-rate-variability"), errors),
+        "rhr_pts": _safe_fetch("rhr", lambda: hc.list_data_points("daily-resting-heart-rate"), errors),
+        "sleep_pts": _safe_fetch("sleep", lambda: hc.list_data_points("sleep", max_pages=8), errors),
+        "resp_pts": _safe_fetch("resp", lambda: hc.list_data_points("daily-respiratory-rate"), errors),
+        "zone_pts": _safe_fetch("zones", lambda: hc.list_data_points("active-zone-minutes"), errors),
+        "weight_pts": _safe_fetch("weight", lambda: hc.list_data_points("weight"), errors),
+        "height_pts": _safe_fetch("height", lambda: hc.list_data_points("height", max_pages=2), errors),
+        "vo2_pts": _safe_fetch("vo2", lambda: hc.list_data_points("daily-vo2-max"), errors),
+        "steps_pts": _safe_fetch(
+            "steps", lambda: hc.list_recent_data_points("steps", days=90, max_pages=15), errors
+        ),
+        "steps_rollups": hc.daily_rollup_optional("steps", 90),
+        "distance_pts": _safe_fetch(
+            "distance", lambda: hc.list_recent_data_points("distance", days=90, max_pages=15), errors
+        ),
+        "distance_rollups": hc.daily_rollup_optional("distance", 90),
+        "hr_pts": _safe_fetch(
+            "heart-rate",
+            lambda: hc.list_recent_heart_rate_points(days=90, max_pages=15),
+            errors,
+        ),
+        "exercise_pts": _safe_fetch(
+            "exercise", lambda: hc.list_recent_data_points("exercise", days=90, max_pages=20), errors
+        ),
+        "active_energy_pts": _safe_fetch(
+            "active-energy",
+            lambda: hc.list_recent_data_points("active-energy-burned", days=90, max_pages=20),
+            errors,
+        ),
+        "body_fat_pts": _safe_fetch(
+            "body-fat", lambda: hc.list_data_points_optional("body-fat", max_pages=3), errors
+        ),
+        "spo2_pts": _safe_fetch(
+            "spo2",
+            lambda: hc.list_data_points_optional("daily-oxygen-saturation", max_pages=3)
+            or hc.list_data_points_optional("oxygen-saturation", max_pages=5),
+            errors,
+        ),
+    }
+    _fetch_errors = errors
+    _synced_at = datetime.now(timezone.utc).isoformat()
+    _cache_built_at = time.monotonic()
+    return _raw_cache
+
+
+def parse_raw(raw: dict) -> dict:
+    steps_pts = p.parse_steps_from_points(raw.get("steps_pts") or [])
+    steps_roll = p.parse_steps_rollup(raw.get("steps_rollups") or [])
+    steps = p.merge_daily_max(steps_pts, steps_roll)
+    distance_pts = p.parse_distance_daily(raw.get("distance_pts") or [])
+    distance_roll = p.parse_distance_rollup(raw.get("distance_rollups") or [])
+    distance = p.merge_daily_max_float(distance_pts, distance_roll)
+    return {
+        "profile": raw["profile"],
+        "hrv": p.parse_hrv_daily(raw["hrv_pts"]),
+        "rhr": p.parse_daily_rhr(raw["rhr_pts"]),
+        "sleep": p.parse_sleep_sessions(raw["sleep_pts"]),
+        "resp": p.parse_respiratory_daily(raw["resp_pts"]),
+        "zones": p.parse_zone_minutes(raw["zone_pts"]),
+        "steps": steps,
+        "distance": distance,
+        "weight": p.parse_weight(raw["weight_pts"]),
+        "height": p.parse_height(raw["height_pts"]),
+        "vo2": p.parse_vo2max(raw["vo2_pts"]),
+        "hr_avg": p.parse_hr_daily_avg(raw["hr_pts"]),
+        "exercise": p.parse_exercise_daily(raw["exercise_pts"]),
+        "active_energy": p.parse_active_energy_daily(raw["active_energy_pts"]),
+        "body_fat": p.parse_body_fat(raw["body_fat_pts"]),
+        "spo2": p.parse_spo2_daily(raw.get("spo2_pts") or []),
+    }
+
+
+def _strain_ctx(parsed: dict) -> dict:
+    return {
+        "steps": parsed["steps"],
+        "active_energy": parsed["active_energy"],
+        "exercise": parsed["exercise"],
+    }
+
+
+def _build_activity_recent(
+    exercise: dict[str, dict],
+    steps: dict[str, int],
+    distance: dict[str, float] | None = None,
+    *,
+    limit: int = 14,
+) -> list[dict]:
+    """Recent days with Fitbit sessions and/or steps (walking without a logged workout)."""
+    dates = sorted(set(exercise) | set(steps), reverse=True)[:limit]
+    dist = distance or {}
+    recent: list[dict] = []
+    for d in dates:
+        ex = exercise.get(d, {})
+        step_count = steps.get(d)
+        dist_km = dist.get(d)
+        if ex.get("count", 0) > 0:
+            recent.append(
+                {
+                    "date": d,
+                    "count": ex.get("count", 0),
+                    "minutes": ex.get("minutes", 0),
+                    "types": ex.get("types", {}),
+                    "sessions": ex.get("sessions", []),
+                    "steps": step_count,
+                    "distance_km": dist_km,
+                    "kind": "session",
+                }
+            )
+        elif step_count:
+            recent.append(
+                {
+                    "date": d,
+                    "count": 0,
+                    "minutes": 0,
+                    "types": {},
+                    "sessions": [],
+                    "steps": step_count,
+                    "distance_km": dist_km,
+                    "kind": "steps",
+                }
+            )
+    return recent
+
+
+def build_dashboard(
+    focus_date: str | None = None,
+    raw: dict | None = None,
+    overrides: dict | None = None,
+) -> dict:
+    raw = raw or fetch_raw()
+    parsed = parse_raw(raw)
+    google_profile = parsed["profile"]
+    profile = _merge_profile_overrides(google_profile, overrides)
+    age = _derive_age(profile)
+    sex = _derive_sex(profile)
+    google_age = _derive_age(google_profile)
+    google_sex = _derive_sex(google_profile)
+
+    hrv = parsed["hrv"]
+    rhr = parsed["rhr"]
+    sleep = parsed["sleep"]
+    resp = parsed["resp"]
+    zones = parsed["zones"]
+    steps = parsed["steps"]
+    distance = parsed["distance"]
+    weight = parsed["weight"]
+    height = parsed["height"]
+    vo2 = parsed["vo2"]
+    hr_avg = parsed["hr_avg"]
+    exercise = parsed["exercise"]
+    active_energy = parsed["active_energy"]
+    body_fat = parsed["body_fat"]
+    spo2 = parsed["spo2"]
+
+    all_dates = sorted(
+        set(hrv)
+        | set(rhr)
+        | set(sleep)
+        | set(zones)
+        | set(steps)
+        | set(distance)
+        | set(resp)
+        | set(spo2)
+        | set(hr_avg)
+        | set(exercise)
+        | set(active_energy)
+    )
+
+    today = _today()
+    focus = focus_date or today
+    if focus > today:
+        focus = today
+
+    prior_day = (date_type.fromisoformat(focus) - timedelta(days=1)).isoformat()
+    strain_kw = _strain_ctx(parsed)
+    prior_strain = s.compute_strain(prior_day, zones, **strain_kw)["score"]
+
+    recovery = s.compute_recovery(focus, hrv, rhr, sleep, resp, prior_strain)
+    strain = s.compute_strain(focus, zones, **strain_kw)
+    sleep_score = s.compute_sleep_score(focus, sleep, need=s.sleep_need_hours(prior_strain))
+    monitor = s.health_monitor(focus, hrv, rhr, resp, spo2)
+    stress = s.compute_stress_proxy(focus, hr_avg, rhr)
+    x_age = s.compute_physiological_age(
+        focus, age, rhr, hrv, sleep, steps, zones, vo2, body_fat, sex=sex
+    )
+
+    history = []
+    for d in all_dates[-30:]:
+        ps = s.compute_strain(
+            (date_type.fromisoformat(d) - timedelta(days=1)).isoformat(), zones, **strain_kw
+        )["score"]
+        ex_d = exercise.get(d, {})
+        w_date_d, w_kg_d = s.nearest_metric(weight, d)
+        sleep_row = s.compute_sleep_score(d, sleep, need=s.sleep_need_hours(ps))
+        history.append(
+            {
+                "date": d,
+                "recovery": s.compute_recovery(d, hrv, rhr, sleep, resp, ps)["score"],
+                "strain": s.compute_strain(d, zones, **strain_kw)["score"],
+                "sleep": sleep_row["score"],
+                "sleep_hours": sleep_row["hours"],
+                "sleep_need": sleep_row["need"],
+                "sleep_debt": sleep_row["debt_hours"],
+                "steps": steps.get(d),
+                "distance_km": distance.get(d),
+                "hrv": hrv.get(d),
+                "rhr": rhr.get(d),
+                "respiratory": resp.get(d),
+                "spo2": spo2.get(d),
+                "stress": s.compute_stress_proxy(d, hr_avg, rhr).get("score"),
+                "exercise_minutes": ex_d.get("minutes", 0),
+                "exercise_count": ex_d.get("count", 0),
+                "weight": round(w_kg_d, 1) if w_kg_d is not None else None,
+                "weight_date": w_date_d,
+                "active_calories": active_energy.get(d),
+            }
+        )
+
+    # Pace of aging: dedicated ~60-day series, lightly smoothed (3-day window)
+    # so the regression — not a pre-smoothing — does the trend extraction.
+    age_history = [
+        (
+            d,
+            s.compute_physiological_age(
+                d, age, rhr, hrv, sleep, steps, zones, vo2, body_fat, window_days=3, sex=sex
+            )["functional_age"],
+        )
+        for d in all_dates[-60:]
+    ]
+    pace = s.compute_pace_of_aging(age_history)
+
+    # Advanced signals (Oura/Whoop-style), all derived from existing data.
+    focus_d = date_type.fromisoformat(focus)
+    # 42-day window: 28-day chronic baseline + 14 days of ACWR series points.
+    strain_by_day = {
+        d: s.compute_strain(d, zones, **strain_kw)["score"]
+        for d in all_dates
+        if 0 <= (focus_d - date_type.fromisoformat(d)).days < 42
+    }
+    sleep_regularity = s.compute_sleep_regularity(focus, sleep)
+    load_balance = s.compute_load_balance(focus, strain_by_day)
+    hrv_balance = s.compute_hrv_balance(focus, hrv)
+
+    body = s.compute_body_composition(focus, weight, height, body_fat, age=age, sex=sex)
+    body = _apply_body_overrides(body, overrides or {})
+    calories = s.compute_calories_summary(
+        focus,
+        active_energy,
+        body["weight_kg"],
+        body["height_cm"],
+        age,
+        sex,
+    )
+
+    ex_day = exercise.get(focus, {})
+    focus_steps = steps.get(focus) or 0
+
+    exercise_recent = _build_activity_recent(exercise, steps, distance)
+
+    # KPI coverage map (hors capteurs hardware : ECG, AFib, TA)
+    kpi_coverage = [
+        {"id": "recovery", "name": "Récupération %", "status": "active", "has_data": recovery["components"]["hrv"]["value"] is not None},
+        {"id": "strain", "name": "Charge %", "status": "active", "has_data": strain["source"] != "none"},
+        {"id": "sleep", "name": "Performance sommeil", "status": "active", "has_data": sleep_score["hours"] > 0},
+        {"id": "health_monitor", "name": "Moniteur santé", "status": "active", "has_data": len(monitor) > 0},
+        {"id": "journal", "name": "Journal", "status": "manual", "has_data": False},
+        {"id": "stress", "name": "Moniteur stress", "status": "proxy", "has_data": stress.get("score") is not None},
+        {"id": "cycle", "name": "Cycle menstruel", "status": "partial", "has_data": False},
+        {"id": "x_age", "name": "Âge physiologique / rythme", "status": "calibrating" if pace.get("status") == "calibrating" else "active", "has_data": x_age["delta_years"] != 0 or len(x_age["factors"]) > 0},
+        {"id": "strength", "name": "Entraînement", "status": "partial", "has_data": ex_day.get("count", 0) > 0 or focus_steps > 0},
+        {"id": "pdf", "name": "Rapport PDF", "status": "planned", "has_data": False},
+        {"id": "vo2", "name": "VO₂ Max", "status": "proxy" if not vo2.get(focus) else "active", "has_data": bool(vo2.get(focus) or vo2)},
+        {"id": "weight", "name": "Poids / IMC", "status": "active", "has_data": body["weight_kg"] is not None},
+        {"id": "calories", "name": "Calories", "status": "active", "has_data": calories.get("active_kcal") is not None},
+        {"id": "sleep_regularity", "name": "Régularité sommeil", "status": "calibrating" if sleep_regularity.get("status") == "calibrating" else "active", "has_data": sleep_regularity.get("score") is not None},
+        {"id": "load_balance", "name": "Équilibre de charge", "status": "calibrating" if load_balance.get("status") == "calibrating" else "active", "has_data": load_balance.get("ratio") is not None},
+        {"id": "hrv_balance", "name": "HRV Balance", "status": "calibrating" if hrv_balance.get("status") == "calibrating" else "active", "has_data": hrv_balance.get("score") is not None},
+    ]
+
+    return {
+        "profile": {
+            "age": age,
+            "sex": sex,
+            "date_of_birth": _extract_dob_iso(profile),
+            "google_age": google_age,
+            "google_sex": google_sex,
+            "height_cm": body["height_cm"],
+            "weight_kg": body["weight_kg"],
+            "override_fields": list((overrides or {}).keys()),
+        },
+        "focus_date": focus,
+        "today": today,
+        "available_dates": sorted(set(all_dates) | {today}, reverse=True),
+        "synced_at": _synced_at,
+        "sync_warnings": _fetch_errors,
+        "dates_with_data": sorted(all_dates, reverse=True),
+        "recovery": recovery,
+        "strain": strain,
+        "sleep": sleep_score,
+        "health_monitor": monitor,
+        "stress": stress,
+        "physiological_age": x_age,
+        "pace_of_aging": pace,
+        "sleep_regularity": sleep_regularity,
+        "load_balance": load_balance,
+        "hrv_balance": hrv_balance,
+        "vitals": {
+            "steps": steps.get(focus),
+            "distance_km": distance.get(focus),
+            "weight_kg": body["weight_kg"],
+            "weight_date": body["weight_date"],
+            "height_cm": body["height_cm"],
+            "height_m": body["height_m"],
+            "bmi": body["bmi"],
+            "bmi_category": body["bmi_category"],
+            "lean_mass_kg": body["lean_mass_kg"],
+            "fat_mass_kg": body["fat_mass_kg"],
+            "weight_delta_7d": body["weight_delta_7d"],
+            "weight_history": body["weight_history"],
+            "vo2_max": vo2.get(focus) or s.nearest_metric(vo2, focus)[1],
+            "body_fat_pct": body["body_fat_pct"] or body_fat.get(focus) or s.nearest_metric(body_fat, focus)[1],
+            "ideal_weight": body.get("ideal_weight"),
+            "ideal_body_fat": body.get("ideal_body_fat"),
+            "respiratory": resp.get(focus),
+            "spo2": spo2.get(focus),
+            "active_calories": calories.get("active_kcal"),
+            "bmr_kcal": calories.get("bmr_kcal"),
+            "total_calories_est": calories.get("total_est_kcal"),
+            "calories_avg_14d": calories.get("avg_active_14d"),
+            "calories_delta_7d": calories.get("delta_active_7d"),
+            "calories_history": calories.get("history", []),
+        },
+        "calories": calories,
+        "body_composition": body,
+        "exercise": {
+            "count": ex_day.get("count", 0),
+            "minutes": round(ex_day.get("minutes", 0)),
+            "calories": round(ex_day.get("calories", 0)),
+            "types": ex_day.get("types", {}),
+            "sessions": ex_day.get("sessions", []),
+        },
+        "exercise_recent": exercise_recent,
+        "kpi_coverage": kpi_coverage,
+        "history": history[-14:],
+        "source": "google_health_api",
+    }
+
+
+@app.get("/api/health")
+def health():
+    return {"ok": True, "synced_at": _synced_at}
+
+
+@app.get("/api/dashboard")
+def dashboard(
+    day: str | None = Query(None, alias="date", description="YYYY-MM-DD"),
+    sex: str | None = Query(None, pattern="^(male|female)$"),
+    dob: str | None = Query(None, description="YYYY-MM-DD"),
+    height_cm: float | None = Query(None, ge=100, le=250),
+    weight_kg: float | None = Query(None, ge=30, le=300),
+):
+    try:
+        if day:
+            try:
+                date_type.fromisoformat(day)
+            except ValueError as e:
+                raise HTTPException(400, "Format date invalide (YYYY-MM-DD)") from e
+        overrides = _parse_profile_overrides(sex=sex, dob=dob, height_cm=height_cm, weight_kg=weight_kg)
+        return build_dashboard(focus_date=day, overrides=overrides)
+    except FileNotFoundError as e:
+        raise HTTPException(503, str(e)) from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, f"Google Health API: {e}") from e
+
+
+@app.post("/api/refresh")
+def refresh(
+    day: str | None = Query(None, alias="date"),
+    sex: str | None = Query(None, pattern="^(male|female)$"),
+    dob: str | None = Query(None, description="YYYY-MM-DD"),
+    height_cm: float | None = Query(None, ge=100, le=250),
+    weight_kg: float | None = Query(None, ge=30, le=300),
+):
+    global _raw_cache
+    _raw_cache = None
+    try:
+        raw = fetch_raw(force=True)
+        if not raw.get("hrv_pts") and not raw.get("sleep_pts") and not raw.get("steps_pts"):
+            raise HTTPException(
+                503,
+                "Synchronisation partielle — aucune donnée vitale. Vérifie l'auth Google Health.",
+            )
+        overrides = _parse_profile_overrides(sex=sex, dob=dob, height_cm=height_cm, weight_kg=weight_kg)
+        return build_dashboard(focus_date=day, raw=raw, overrides=overrides)
+    except FileNotFoundError as e:
+        raise HTTPException(503, str(e)) from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, f"Erreur synchronisation: {e}") from e
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)

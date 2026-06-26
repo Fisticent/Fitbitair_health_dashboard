@@ -17,7 +17,15 @@ import { StepsGoalEditor } from "../desktop/StepsGoalEditor";
 import { CaloriesGoalEditor } from "../desktop/CaloriesGoalEditor";
 import { metricComparison } from "../../utils/comparisons";
 import { ZoneBreakdownBar } from "./ZoneBreakdownBar";
+import { StrainFitChart } from "./StrainFitChart";
 import { LueurMetricLabel } from "./LueurInfoTip";
+
+const FIT_PILL_CLASS = {
+  green: "lueur-status-pill--teal",
+  yellow: "lueur-status-pill--amber",
+  orange: "lueur-status-pill--amber",
+  red: "lueur-status-pill--coral",
+};
 
 export function StrainView({
   data,
@@ -87,7 +95,7 @@ export function StrainView({
               {strain?.zone_minutes ?? 0} min en zones FC · charge {strain?.load ?? "—"}
             </p>
             <p style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <span className="lueur-status-pill lueur-status-pill--teal">{strainFit.label}</span>
+              <span className={`lueur-status-pill ${FIT_PILL_CLASS[strainFit.zone] || "lueur-status-pill--teal"}`}>{strainFit.label}</span>
               <LueurMetricLabel id="strain_recovery_fit" as="span" className="lueur-inline-tip-label">
                 Adéquation récup.
               </LueurMetricLabel>
@@ -144,6 +152,21 @@ export function StrainView({
           </LueurCard>
         )}
       </div>
+
+      <LueurCard style={{ marginTop: 20 }}>
+        <LueurMetricLabel id="strain_recovery_fit" as="p" className="lueur-label" style={{ marginBottom: 4 }}>
+          Adéquation charge / récup
+        </LueurMetricLabel>
+        <p className="lueur-meta" style={{ marginBottom: 14 }}>
+          Charge vs récupération · 7 derniers jours
+        </p>
+        <StrainFitChart
+          history={history}
+          focusDate={focus_date}
+          todayStrain={strain?.score}
+          todayRecovery={recovery?.score}
+        />
+      </LueurCard>
 
       <LueurCard style={{ marginTop: 20 }}>
         <LueurMetricLabel id="strain" as="p" className="lueur-label" style={{ marginBottom: 14 }}>

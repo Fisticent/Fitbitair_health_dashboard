@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date as date_type, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -228,60 +229,50 @@ def _fetch_raw_locked() -> dict:
     except Exception as exc:
         raise FileNotFoundError(f"Profil Google Health inaccessible: {exc}") from exc
 
-    _raw_cache = {
-        "profile": profile,
-        "hrv_pts": _safe_fetch("hrv", lambda: hc.list_data_points("heart-rate-variability"), errors),
-        "daily_hrv_pts": _safe_fetch(
-            "daily-hrv", lambda: hc.list_data_points_optional("daily-heart-rate-variability"), errors
-        ),
-        "skin_temp_pts": _safe_fetch(
-            "skin-temp",
-            lambda: hc.list_data_points_optional("daily-sleep-temperature-derivations"),
-            errors,
-        ),
-        "sedentary_pts": _safe_fetch(
-            "sedentary",
-            lambda: hc.list_recent_data_points_optional("sedentary-period", days=30, max_pages=10),
-            errors,
-        ),
-        "rhr_pts": _safe_fetch("rhr", lambda: hc.list_data_points("daily-resting-heart-rate"), errors),
-        "sleep_pts": _safe_fetch("sleep", lambda: hc.list_data_points("sleep", max_pages=8), errors),
-        "resp_pts": _safe_fetch("resp", lambda: hc.list_data_points("daily-respiratory-rate"), errors),
-        "zone_pts": _safe_fetch("zones", lambda: hc.list_data_points("active-zone-minutes"), errors),
-        "weight_pts": _safe_fetch("weight", lambda: hc.list_data_points("weight"), errors),
-        "height_pts": _safe_fetch("height", lambda: hc.list_data_points("height", max_pages=2), errors),
-        "vo2_pts": _safe_fetch("vo2", lambda: hc.list_data_points("daily-vo2-max"), errors),
-        "steps_pts": _safe_fetch(
-            "steps", lambda: hc.list_recent_data_points("steps", days=90, max_pages=15), errors
-        ),
-        "steps_rollups": hc.daily_rollup_optional("steps", 90),
-        "distance_pts": _safe_fetch(
-            "distance", lambda: hc.list_recent_data_points("distance", days=90, max_pages=15), errors
-        ),
-        "distance_rollups": hc.daily_rollup_optional("distance", 90),
-        "hr_pts": _safe_fetch(
-            "heart-rate",
-            lambda: hc.list_recent_heart_rate_points(days=90, max_pages=15),
-            errors,
-        ),
-        "exercise_pts": _safe_fetch(
-            "exercise", lambda: hc.list_recent_data_points("exercise", days=90, max_pages=20), errors
-        ),
-        "active_energy_pts": _safe_fetch(
-            "active-energy",
-            lambda: hc.list_recent_data_points("active-energy-burned", days=90, max_pages=20),
-            errors,
-        ),
-        "body_fat_pts": _safe_fetch(
-            "body-fat", lambda: hc.list_data_points_optional("body-fat", max_pages=3), errors
-        ),
-        "spo2_pts": _safe_fetch(
-            "spo2",
-            lambda: hc.list_data_points_optional("daily-oxygen-saturation", max_pages=3)
-            or hc.list_data_points_optional("oxygen-saturation", max_pages=5),
-            errors,
-        ),
+    # Warm the OAuth token once before fanning out, so the parallel workers don't
+    # each trigger a concurrent refresh (the token cache uses unguarded globals).
+    try:
+        hc.get_access_token()
+    except Exception:
+        pass  # each fetch surfaces the real error via _safe_fetch
+
+    # Every fetch below is independent → run them concurrently instead of in
+    # series (the sequential version took ~70s cold). Bounded pool stays under
+    # Google's rate limit; transient 429/503 are still retried in the client.
+    tasks: dict[str, tuple[str, object]] = {
+        "hrv_pts": ("hrv", lambda: hc.list_data_points("heart-rate-variability")),
+        "daily_hrv_pts": ("daily-hrv", lambda: hc.list_data_points_optional("daily-heart-rate-variability")),
+        "skin_temp_pts": ("skin-temp", lambda: hc.list_data_points_optional("daily-sleep-temperature-derivations")),
+        "sedentary_pts": ("sedentary", lambda: hc.list_recent_data_points_optional("sedentary-period", days=30, max_pages=10)),
+        "rhr_pts": ("rhr", lambda: hc.list_data_points("daily-resting-heart-rate")),
+        "sleep_pts": ("sleep", lambda: hc.list_data_points("sleep", max_pages=8)),
+        "resp_pts": ("resp", lambda: hc.list_data_points("daily-respiratory-rate")),
+        "zone_pts": ("zones", lambda: hc.list_data_points("active-zone-minutes")),
+        "weight_pts": ("weight", lambda: hc.list_data_points("weight")),
+        "height_pts": ("height", lambda: hc.list_data_points("height", max_pages=2)),
+        "vo2_pts": ("vo2", lambda: hc.list_data_points("daily-vo2-max")),
+        "steps_pts": ("steps", lambda: hc.list_recent_data_points("steps", days=90, max_pages=15)),
+        "steps_rollups": ("steps-rollup", lambda: hc.daily_rollup_optional("steps", 90)),
+        "distance_pts": ("distance", lambda: hc.list_recent_data_points("distance", days=90, max_pages=15)),
+        "distance_rollups": ("distance-rollup", lambda: hc.daily_rollup_optional("distance", 90)),
+        "hr_pts": ("heart-rate", lambda: hc.list_recent_heart_rate_points(days=90, max_pages=15)),
+        "exercise_pts": ("exercise", lambda: hc.list_recent_data_points("exercise", days=90, max_pages=20)),
+        "active_energy_pts": ("active-energy", lambda: hc.list_recent_data_points("active-energy-burned", days=90, max_pages=20)),
+        "body_fat_pts": ("body-fat", lambda: hc.list_data_points_optional("body-fat", max_pages=3)),
+        "spo2_pts": ("spo2", lambda: hc.list_data_points_optional("daily-oxygen-saturation", max_pages=3)
+                     or hc.list_data_points_optional("oxygen-saturation", max_pages=5)),
     }
+
+    results: dict[str, object] = {"profile": profile}
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = {
+            pool.submit(_safe_fetch, label, fn, errors): key
+            for key, (label, fn) in tasks.items()
+        }
+        for fut in as_completed(futures):
+            results[futures[fut]] = fut.result()
+
+    _raw_cache = results
     _fetch_errors = errors
     _synced_at = datetime.now(timezone.utc).isoformat()
     _cache_built_at = time.monotonic()

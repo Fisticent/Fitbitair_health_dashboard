@@ -195,6 +195,7 @@ export function TodayView({
     { green: "teal", yellow: "amber", red: "coral" }[recovery?.zone] || "teal";
   const sleepStatus = scoreStatusLabel(sleepScore);
   const stressStatus = stress ? stressZoneFromLevel(stress.level, stress.label) : null;
+  const stressCalibrating = stress?.status === "calibrating";
   const strainFit = strainRecoveryFit(strain?.score, recovery?.zone);
 
   const narrative =
@@ -433,10 +434,26 @@ export function TodayView({
           <VitalMetricCard
             tipId="stress"
             label="Stress"
-            value={stress.label || stressStatus?.label || "—"}
-            meta="estimation FC diurne"
+            value={stressCalibrating ? "En calibrage" : stress.label || stressStatus?.label || "—"}
+            meta={stressCalibrating ? "estimation provisoire · FC diurne" : "estimation FC diurne"}
             extra={
               <>
+                {stressCalibrating && (
+                  <div style={{ marginTop: 8 }}>
+                    <div className="lueur-progress-track">
+                      <div
+                        className="lueur-progress-fill"
+                        style={{
+                          width: `${Math.round((stress.progress ?? 0) * 100)}%`,
+                          background: COLORS.BLUE,
+                        }}
+                      />
+                    </div>
+                    <div className="lueur-mono-meta" style={{ marginTop: 4 }}>
+                      baseline perso : {stress.days ?? 0}/{stress.days_needed ?? 10} jours
+                    </div>
+                  </div>
+                )}
                 {stress.hr_avg != null && (
                   <div className="lueur-mono-meta" style={{ marginTop: 6 }}>
                     FC moy. {stress.hr_avg} bpm · repos {stress.rhr_baseline ?? "—"} bpm
@@ -450,7 +467,8 @@ export function TodayView({
                   <div
                     className="lueur-stress-bar"
                     role="img"
-                    aria-label={`Niveau de stress ${stress.score} %`}
+                    aria-label={`Niveau de stress ${stress.score} sur 100`}
+                    style={stressCalibrating ? { opacity: 0.5 } : undefined}
                   >
                     <div className="lueur-stress-bar-track">
                       <span className="lueur-stress-bar-seg lueur-stress-bar-seg--low" />
@@ -464,7 +482,9 @@ export function TodayView({
                   </div>
                 )}
                 <div className="lueur-mono-meta">
-                  {stress.score != null ? `score ${stress.score} %` : "—"}
+                  {stress.score != null
+                    ? `indice ${stress.score}/100${stressCalibrating ? " · provisoire" : ""}`
+                    : "—"}
                 </div>
               </div>
             }

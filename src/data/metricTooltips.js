@@ -16,7 +16,7 @@ export const METRIC_TOOLTIPS = {
   rhr:
     "FC repos (bpm) : fréquence cardiaque au repos. Une valeur basse et stable est généralement un bon signe ; une hausse vs ta moyenne peut signaler fatigue ou stress.",
   stress:
-    "Moniteur stress (estimation) : calcul maison via FC diurne moyenne vs FC repos. Pas un capteur de stress réel — indicateur de surcharge physiologique possible.",
+    "Moniteur stress (indice 0–100, estimation) : combine la baisse de VFC (signal principal, sur ln-VFC comme WHOOP) et l'élévation de FC diurne vs repos, chacune comparée à ta baseline ~14 jours. L'élévation de FC est atténuée les jours de forte charge pour ne pas confondre sport et stress. Couche « aiguë » ; la dérive long terme est suivie par le moniteur santé. Pas un capteur de stress réel.",
   x_age:
     "X-Âge (âge physiologique) : âge fonctionnel estimé à partir de FC repos, VFC, sommeil, activité et VO₂. Compare-toi à ton âge réel pour voir si tu « rajeunis » ou non.",
   pace_of_aging:
@@ -84,7 +84,7 @@ export const METRIC_TOOLTIPS = {
   compare_scores:
     "Récupération, sommeil et charge sur 14 jours — survole un jour pour le détail.",
   compare_stress:
-    "Courbe stress : estimation via FC diurne vs repos. Nécessite la FC intraday synchronisée.",
+    "Courbe stress (indice 0–100) : VFC + FC diurne vs ta baseline ~14 j, atténuée les jours de sport. Nécessite la FC intraday synchronisée.",
   activity_day:
     "Synthèse activité du jour : pas, distance (km Fitbit ou estimée), calories actives et temps d'exercice.",
   body_composition:

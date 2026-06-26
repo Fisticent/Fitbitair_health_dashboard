@@ -89,6 +89,8 @@ export const METRIC_TOOLTIPS = {
     "Récupération, sommeil et charge sur 14 jours — survole un jour pour le détail.",
   compare_stress:
     "Courbe stress (indice 0–100) : VFC + FC diurne vs ta baseline ~14 j, atténuée les jours de sport. Nécessite la FC intraday synchronisée.",
+  compare_resp_spo2:
+    "Respiration et SpO₂ sur 14 jours — complément au moniteur santé (moyenne 30 j).",
   activity_day:
     "Synthèse activité du jour : pas, distance (km Fitbit ou estimée), calories actives et temps d'exercice.",
   body_composition:
@@ -118,9 +120,9 @@ export const METRIC_TOOLTIPS = {
   profile_weight:
     "Poids de secours (kg) si aucune pesée récente n'est synchronisée. Les pesées Fitbit / balance restent prioritaires quand elles existent.",
   profile_goals:
-    "Objectifs d'affichage locaux : barres de progression et pourcentages dans Aujourd'hui, Récupération et Charge. Stockés sur cet appareil.",
+    "Objectifs d'affichage : barres de progression et pourcentages dans Aujourd'hui et Charge. Synchronisés avec ton compte.",
   profile_local:
-    "Ces réglages ne sont pas envoyés à Google. Ils sont mémorisés dans ton navigateur et transmis à l'API locale pour recalculer BMR et X-Âge.",
+    "Sexe, masse grasse et objectifs sont synchronisés avec ton compte. Données vitales via Google Health.",
   profile_bmr:
     "Métabolisme de base estimé (kcal/j) à partir du poids, taille, âge et sexe. Ajouté aux calories actives pour le total journalier estimé.",
 };

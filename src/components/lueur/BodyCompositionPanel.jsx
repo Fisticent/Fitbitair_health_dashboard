@@ -265,22 +265,10 @@ export function BodyCompositionPanel({
                 </span>
               </li>
             )}
-            <li>
-              <LueurMetricLabel id="vo2" as="span" className="lueur-body-comp-metric-label">
-                VO₂ max
-              </LueurMetricLabel>
-              <span className="lueur-body-comp-metric-value">
-                {vitals?.vo2_max != null ? (
-                  <>
-                    {formatMetricValue("vo2", vitals.vo2_max)}
-                    <span className="lueur-body-comp-unit"> ml/kg/min</span>
-                  </>
-                ) : (
-                  <span className="lueur-body-comp-metric-empty">Non synchronisé</span>
-                )}
-              </span>
-            </li>
           </ul>
+          <p className="lueur-mono-meta" style={{ marginTop: 12 }}>
+            VO₂ max et tendances longues → onglet Analyses
+          </p>
         </article>
       </div>
     </div>

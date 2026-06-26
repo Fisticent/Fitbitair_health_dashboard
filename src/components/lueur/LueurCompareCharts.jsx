@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import { LueurCard } from "./LueurCard";
-import { LueurWeightChart } from "./WeightChart";
 import { COLORS, formatChartDate, pickVisibleXLabels, xLabelStyle } from "./chartUtils";
 import { seriesBaseline } from "../../utils/comparisons";
 import { formatMetricValue } from "../../utils/formatMetric";
@@ -194,6 +193,77 @@ function LueurVitalsChart({ history }) {
             gradient="coral"
             valueUnit="bpm"
             formatValue={(v) => formatMetricValue("RHR", v)}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LueurRespSpo2Chart({ history }) {
+  const respPoints = useMemo(
+    () =>
+      (history || [])
+        .filter((d) => d.respiratory != null)
+        .map((d) => ({ date: d.date, value: d.respiratory })),
+    [history],
+  );
+  const spo2Points = useMemo(
+    () =>
+      (history || [])
+        .filter((d) => d.spo2 != null)
+        .map((d) => ({ date: d.date, value: d.spo2 })),
+    [history],
+  );
+
+  if (!respPoints.length && !spo2Points.length) return null;
+
+  const respAvg = seriesBaseline(history, "respiratory");
+  const spo2Avg = seriesBaseline(history, "spo2");
+
+  return (
+    <div className="lueur-vitals-split">
+      {respPoints.length > 0 && (
+        <div className="lueur-vitals-split-block">
+          <div className="lueur-vitals-split-head">
+            <span className="lueur-stat-chart-label">Respiration</span>
+            {respAvg != null && (
+              <span className="lueur-chart-avg-pill lueur-chart-avg-pill--blue">
+                moy. {formatMetricValue("Respiration", respAvg)}/min
+              </span>
+            )}
+          </div>
+          <MiniSparkChart
+            points={respPoints}
+            width={W}
+            height={100}
+            pad={12}
+            color={COLORS.BLUE}
+            gradient="blue"
+            valueUnit="/min"
+            formatValue={(v) => formatMetricValue("Respiration", v)}
+          />
+        </div>
+      )}
+      {spo2Points.length > 0 && (
+        <div className="lueur-vitals-split-block">
+          <div className="lueur-vitals-split-head">
+            <span className="lueur-stat-chart-label">SpO₂</span>
+            {spo2Avg != null && (
+              <span className="lueur-chart-avg-pill lueur-chart-avg-pill--blue">
+                moy. {formatMetricValue("SpO2", spo2Avg)} %
+              </span>
+            )}
+          </div>
+          <MiniSparkChart
+            points={spo2Points}
+            width={W}
+            height={100}
+            pad={12}
+            color={COLORS.BLUE}
+            gradient="blue"
+            valueUnit="%"
+            formatValue={(v) => formatMetricValue("SpO2", v)}
           />
         </div>
       )}
@@ -617,49 +687,47 @@ function LueurStressChart({ history }) {
   );
 }
 
-export function LueurComparePanel({ history, weightSeries, weightDate }) {
+export function LueurComparePanel({ history }) {
   if (!history?.length) return null;
 
+  const hasRespSpo2 = history.some((d) => d.respiratory != null || d.spo2 != null);
+
   return (
-    <>
-      <LueurCard>
-        <p className="lueur-label lueur-card-section-label">Comparatif</p>
-        <p className="lueur-meta" style={{ marginBottom: 20 }}>
-          Courbes 14 jours · survolez pour le détail
-        </p>
+    <LueurCard>
+      <p className="lueur-label lueur-card-section-label">Comparatif</p>
+      <p className="lueur-meta" style={{ marginBottom: 20 }}>
+        Courbes 14 jours · survolez pour le détail · poids dans Santé
+      </p>
 
+      <div className="lueur-compare-block">
+        <LueurMetricLabel id="compare_vitals" as="p" className="lueur-stat-chart-label">
+          Vitaux · vs moyenne
+        </LueurMetricLabel>
+        <LueurVitalsChart history={history} />
+      </div>
+
+      {hasRespSpo2 && (
         <div className="lueur-compare-block">
-          <LueurMetricLabel id="compare_vitals" as="p" className="lueur-stat-chart-label">
-            Vitaux · vs moyenne
+          <LueurMetricLabel id="compare_resp_spo2" as="p" className="lueur-stat-chart-label">
+            Respiration & SpO₂ · 14 jours
           </LueurMetricLabel>
-          <LueurVitalsChart history={history} />
+          <LueurRespSpo2Chart history={history} />
         </div>
-
-        <div className="lueur-compare-block">
-          <LueurMetricLabel id="compare_scores" as="p" className="lueur-stat-chart-label">
-            Scores · vs moyenne
-          </LueurMetricLabel>
-          <LueurScoresChart history={history} />
-        </div>
-
-        <div className="lueur-compare-block">
-          <LueurMetricLabel id="compare_stress" as="p" className="lueur-stat-chart-label">
-            Stress · 14 jours
-          </LueurMetricLabel>
-          <LueurStressChart history={history} />
-        </div>
-      </LueurCard>
-
-      {weightSeries?.length > 1 && (
-        <LueurCard style={{ marginTop: 20 }}>
-          <p className="lueur-label lueur-card-section-label">Poids · historique</p>
-          <p className="lueur-meta" style={{ marginBottom: 14 }}>
-            {weightSeries.length} pesées
-            {weightDate ? ` · active : ${formatChartDate(weightDate)}` : ""}
-          </p>
-          <LueurWeightChart series={weightSeries} activeWeightDate={weightDate} />
-        </LueurCard>
       )}
-    </>
+
+      <div className="lueur-compare-block">
+        <LueurMetricLabel id="compare_scores" as="p" className="lueur-stat-chart-label">
+          Scores · vs moyenne
+        </LueurMetricLabel>
+        <LueurScoresChart history={history} />
+      </div>
+
+      <div className="lueur-compare-block">
+        <LueurMetricLabel id="compare_stress" as="p" className="lueur-stat-chart-label">
+          Stress · 14 jours
+        </LueurMetricLabel>
+        <LueurStressChart history={history} />
+      </div>
+    </LueurCard>
   );
 }

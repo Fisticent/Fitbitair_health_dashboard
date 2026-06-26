@@ -3,7 +3,7 @@ const NAV_ITEMS = [
   { id: "sleep", label: "Sommeil", dot: "#5b8def" },
   { id: "readiness", label: "Récupération", dot: "#15b393" },
   { id: "strain", label: "Charge", dot: "#ef8a6a" },
-  { id: "health", label: "Santé", dot: "#5b8def" },
+  { id: "health", label: "Santé", dot: "#8b7fd4" },
   { id: "plus", label: "Analyses", dot: "#9aa0ab" },
 ];
 

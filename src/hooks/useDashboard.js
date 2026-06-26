@@ -10,6 +10,8 @@ function todayIso() {
   return `${y}-${m}-${day}`;
 }
 
+const DASHBOARD_FETCH_TIMEOUT_MS = 120_000;
+
 export function useDashboard({ enabled = true } = {}) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -26,7 +28,13 @@ export function useDashboard({ enabled = true } = {}) {
     try {
       const qs = new URLSearchParams({ date: day, _: String(Date.now()) });
       appendProfileOverrideParams(qs);
-      const res = await fetch(`/api/dashboard?${qs}`, API_CREDENTIALS);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), DASHBOARD_FETCH_TIMEOUT_MS);
+      const res = await fetch(`/api/dashboard?${qs}`, {
+        ...API_CREDENTIALS,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.detail || `HTTP ${res.status}`);
@@ -38,7 +46,11 @@ export function useDashboard({ enabled = true } = {}) {
       }
       return json;
     } catch (e) {
-      setError(e.message);
+      const msg =
+        e.name === "AbortError"
+          ? "La synchronisation Google Health prend trop de temps (120 s). Vérifiez que l'API tourne sur le port 8000."
+          : e.message;
+      setError(msg);
       return null;
     } finally {
       if (initial) setLoading(false);
@@ -80,10 +92,7 @@ export function useDashboard({ enabled = true } = {}) {
   const initialLoad = useRef(true);
 
   useEffect(() => {
-    if (!enabled) {
-      setLoading(false);
-      return;
-    }
+    if (!enabled) return;
     load(selectedDate, { initial: initialLoad.current });
     initialLoad.current = false;
   }, [selectedDate, load, enabled]);

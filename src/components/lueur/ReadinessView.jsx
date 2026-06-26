@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { LueurCard } from "./LueurCard";
 import { ProgressRing } from "./ProgressRing";
-import { TrendBars, recoveryTrendFromHistory } from "./TrendBars";
+import { TrendBars, recoveryTrendFromHistory, recoveryTrendAvg } from "./TrendBars";
 import { zoneColor, formatDateLong, scoreStatusLabel } from "./chartUtils";
 import { RECOVERY_ZONE_LABEL } from "../../data/labels";
 import { scoreZone } from "../../utils/metricStatus";
@@ -153,6 +153,7 @@ export function ReadinessView({ data, onBack, history }) {
   const skinTempDev = vitals?.skin_temp?.deviation ?? null;
   const contributors = buildContributors(recovery, sleep, priorStrain);
   const trend = recoveryTrendFromHistory(history);
+  const trendAvg = recoveryTrendAvg(history);
 
   const narrative =
     recovery?.zone === "green"
@@ -260,9 +261,16 @@ export function ReadinessView({ data, onBack, history }) {
           </LueurCard>
         )}
         <LueurCard style={skinTempDev == null ? { gridColumn: "span 2" } : undefined}>
-          <LueurMetricLabel id="trends" as="p" className="lueur-label" style={{ marginBottom: 14 }}>
-            Récupération · 7 jours
-          </LueurMetricLabel>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+            <LueurMetricLabel id="trends" as="p" className="lueur-label" style={{ marginBottom: 0 }}>
+              Récupération · 7 jours
+            </LueurMetricLabel>
+            {trendAvg != null && (
+              <span className="lueur-meta" style={{ marginBottom: 0 }}>
+                Moyenne <b style={{ color: "var(--lueur-text)" }}>{trendAvg}</b>
+              </span>
+            )}
+          </div>
           <TrendBars data={trend} height={130} gap={10} />
         </LueurCard>
       </div>

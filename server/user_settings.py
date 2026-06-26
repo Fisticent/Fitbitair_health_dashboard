@@ -19,6 +19,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "calories_goal": None,
 }
 
+LOCAL_DEV_USER = "__local_dev__"
+
 
 def _store_path() -> Path:
     raw = os.getenv("USER_SETTINGS_PATH")

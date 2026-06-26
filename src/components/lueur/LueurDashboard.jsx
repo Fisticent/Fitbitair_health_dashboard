@@ -11,8 +11,9 @@ import { PlusView } from "./PlusView";
 import { ProfileView } from "./ProfileView";
 import { LueurTopbarActions } from "./LueurTopbarActions";
 import { SyncOverlay } from "./SyncOverlay";
+import { SectionIntentGuide } from "./SectionIntentGuide";
 import { useManualBodyFat, computeLeanMass, useStepsGoal, useCaloriesGoal, useProfileOverrides } from "../../hooks/useManualMetrics";
-import { formatSyncTime } from "./chartUtils";
+import { formatSyncTime, formatDateLong } from "./chartUtils";
 
 export function LueurDashboard({
   data,
@@ -78,6 +79,12 @@ export function LueurDashboard({
       ? `Synchronisé · ${formatSyncTime(synced_at) ?? "—"}`
       : "Non synchronisé";
 
+  const isTodayFocus = focus_date === today;
+  const todayGreeting = isTodayFocus ? "Bonjour" : formatDateLong(focus_date);
+  const todaySubtitle = isTodayFocus
+    ? `${formatDateLong(focus_date)} · Votre journée en un coup d'œil`
+    : "Résumé de la journée sélectionnée";
+
   const navigate = (id) => {
     setSection(id);
     window.scrollTo(0, 0);
@@ -92,12 +99,6 @@ export function LueurDashboard({
             stepsGoal={stepsGoal}
             stepsProgress={stepsProgress}
             onNavigate={navigate}
-            selectedDate={selectedDate}
-            onDateChange={onDateChange}
-            onRefresh={onRefresh}
-            syncing={syncing}
-            syncLabel={syncLabel}
-            datesWithData={datesWithData}
           />
         );
       case "sleep":
@@ -169,9 +170,16 @@ export function LueurDashboard({
       />
       <main className="lueur-main">
         <div className="lueur-content">
-          {section !== "today" && section !== "profile" && (
-            <div className="lueur-topbar">
-              <div />
+          {section !== "profile" && (
+            <div className="lueur-topbar lueur-topbar--global">
+              <div className="lueur-topbar-leading" aria-hidden={section !== "today"}>
+                {section === "today" && (
+                  <>
+                    <div className="lueur-greeting">{todayGreeting}</div>
+                    <div className="lueur-subtitle">{todaySubtitle}</div>
+                  </>
+                )}
+              </div>
               <LueurTopbarActions
                 selectedDate={selectedDate}
                 onDateChange={onDateChange}
@@ -182,6 +190,14 @@ export function LueurDashboard({
                 onRefresh={onRefresh}
               />
             </div>
+          )}
+
+          {section !== "profile" && (
+            <SectionIntentGuide
+              active={section}
+              onNavigate={navigate}
+              compact={section !== "today"}
+            />
           )}
 
           {error && <p className="lueur-inline-error">{error}</p>}

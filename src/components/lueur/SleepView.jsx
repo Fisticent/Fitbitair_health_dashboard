@@ -36,15 +36,17 @@ export function SleepView({ data, onBack, history }) {
   const bedtime = formatClockTime(sleep?.bedtime);
   const wakeup = formatClockTime(sleep?.wakeup);
 
-  const hrHistory = history?.map((d) => d.rhr) ?? [];
-  const hrvHistory = history?.map((d) => d.hrv) ?? [];
-  const minRhr = hrHistory.filter((v) => v != null).length
+  const history14 = history?.slice(-14) ?? [];
+  const hrHistory = history14.map((d) => d.rhr);
+  const hrvHistory = history14.map((d) => d.hrv);
+  const hrCount = hrHistory.filter((v) => v != null).length;
+  const hrvCount = hrvHistory.filter((v) => v != null).length;
+  const minRhr = hrCount
     ? Math.min(...hrHistory.filter((v) => v != null))
     : recovery?.components?.rhr?.value;
-  const avgHrv = hrvHistory.filter((v) => v != null).length
+  const avgHrv = hrvCount
     ? Math.round(
-        hrvHistory.filter((v) => v != null).reduce((a, b) => a + b, 0) /
-          hrvHistory.filter((v) => v != null).length,
+        hrvHistory.filter((v) => v != null).reduce((a, b) => a + b, 0) / hrvCount,
       )
     : recovery?.components?.hrv?.value;
 
@@ -155,32 +157,44 @@ export function SleepView({ data, onBack, history }) {
         <StageBreakdown stages={sleep?.stages} drawn={drawn} />
       </LueurCard>
 
-      <div className="lueur-grid-2">
-        <LueurCard>
-          <LueurMetricLabel id="rhr" as="p" className="lueur-label" style={{ marginBottom: 4 }}>
-            Fréq. cardiaque nocturne
-          </LueurMetricLabel>
-          <div className="lueur-meta" style={{ marginBottom: 14 }}>
-            Minimum{" "}
-            <b style={{ color: "var(--lueur-text)" }}>
-              {minRhr != null ? `${formatMetricValue("FC repos", minRhr)} bpm` : "—"}
-            </b>
-          </div>
-          <LargeSparkChart values={hrHistory} color={COLORS.BLUE} gradient="blue" />
-        </LueurCard>
-        <LueurCard>
-          <LueurMetricLabel id="hrv" as="p" className="lueur-label" style={{ marginBottom: 4 }}>
-            HRV nocturne
-          </LueurMetricLabel>
-          <div className="lueur-meta" style={{ marginBottom: 14 }}>
-            Moyenne{" "}
-            <b style={{ color: "var(--lueur-text)" }}>
-              {avgHrv != null ? `${formatMetricValue("HRV", avgHrv)} ms` : "—"}
-            </b>
-          </div>
-          <LargeSparkChart values={hrvHistory} color={COLORS.TEAL} gradient="teal" />
-        </LueurCard>
-      </div>
+      {(hrCount > 0 || hrvCount > 0) && (
+        <div className="lueur-grid-2" style={{ marginTop: 20 }}>
+          {hrCount > 0 && (
+            <LueurCard>
+              <LueurMetricLabel id="rhr" as="p" className="lueur-label" style={{ marginBottom: 4 }}>
+                FC repos · {hrCount} j
+              </LueurMetricLabel>
+              <div className="lueur-meta" style={{ marginBottom: 8 }}>
+                Minimum du jour{" "}
+                <b style={{ color: "var(--lueur-text)" }}>
+                  {minRhr != null ? `${formatMetricValue("FC repos", minRhr)} bpm` : "—"}
+                </b>
+              </div>
+              <p className="lueur-mono-meta" style={{ marginBottom: 14 }}>
+                Agrégats journaliers (pas la FC mesurée pendant le sommeil).
+              </p>
+              <LargeSparkChart values={hrHistory} color={COLORS.BLUE} gradient="blue" />
+            </LueurCard>
+          )}
+          {hrvCount > 0 && (
+            <LueurCard>
+              <LueurMetricLabel id="hrv" as="p" className="lueur-label" style={{ marginBottom: 4 }}>
+                VFC · {hrvCount} j
+              </LueurMetricLabel>
+              <div className="lueur-meta" style={{ marginBottom: 8 }}>
+                Moyenne{" "}
+                <b style={{ color: "var(--lueur-text)" }}>
+                  {avgHrv != null ? `${formatMetricValue("HRV", avgHrv)} ms` : "—"}
+                </b>
+              </div>
+              <p className="lueur-mono-meta" style={{ marginBottom: 14 }}>
+                Agrégats journaliers · tendance dans Analyses.
+              </p>
+              <LargeSparkChart values={hrvHistory} color={COLORS.TEAL} gradient="teal" />
+            </LueurCard>
+          )}
+        </div>
+      )}
     </div>
   );
 }

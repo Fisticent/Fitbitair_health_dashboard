@@ -2,12 +2,10 @@ import { LueurCard } from "./LueurCard";
 import { ProgressRing, MiniRing } from "./ProgressRing";
 import { HypnogramMini } from "./Hypnogram";
 import { MiniSparkChart } from "./MiniSparkChart";
-import { TrendBars, recoveryTrendFromHistory, recoveryTrendAvg } from "./TrendBars";
 import {
   COLORS,
   zoneColor,
   zonePill,
-  formatDateLong,
   formatSleepDuration,
   formatClockTime,
   scoreStatusLabel,
@@ -18,7 +16,6 @@ import { RECOVERY_ZONE_LABEL } from "../../data/labels";
 import { stressZoneFromLevel, strainRecoveryFit } from "../../utils/metricStatus";
 import { formatMetricValue } from "../../utils/formatMetric";
 import { cumulativeSleepDebt } from "../../utils/sleepDebt";
-import { LueurTopbarActions } from "./LueurTopbarActions";
 import { DailyBrief } from "../desktop/DailyBrief";
 import { LueurMetricLabel } from "./LueurInfoTip";
 
@@ -145,12 +142,6 @@ export function TodayView({
   stepsGoal,
   stepsProgress,
   onNavigate,
-  selectedDate,
-  onDateChange,
-  onRefresh,
-  syncing,
-  syncLabel,
-  datesWithData,
 }) {
   const {
     recovery,
@@ -165,7 +156,6 @@ export function TodayView({
     health_monitor,
   } = data;
 
-  const isToday = focus_date === today;
   const recoveryScore = recovery?.score;
   const sleepScore = sleep?.score;
   const steps = vitals?.steps;
@@ -200,8 +190,6 @@ export function TodayView({
     .slice(-14)
     .map((d) => ({ date: d.date, value: d.spo2 }))
     .filter((p) => p.value != null);
-  const trend = recoveryTrendFromHistory(history);
-  const trendAvg = recoveryTrendAvg(history);
 
   const recoveryStatus = scoreStatusLabel(recoveryScore);
   // Ring + pill must follow the recovery zone, not a hardcoded green.
@@ -221,31 +209,10 @@ export function TodayView({
           ? "Récupération faible — écoutez votre corps et ménagez-vous."
           : "Synthèse du jour basée sur vos données synchronisées.";
 
-  const greeting = isToday ? "Bonjour" : formatDateLong(focus_date);
-  const subtitle = isToday
-    ? `${formatDateLong(focus_date)} · Votre journée en un coup d'œil`
-    : "Résumé de la journée sélectionnée";
-
   const activeHours = exercise?.minutes != null ? Math.round(exercise.minutes / 60) || exercise.minutes : null;
 
   return (
     <div>
-      <div className="lueur-topbar">
-        <div>
-          <div className="lueur-greeting">{greeting}</div>
-          <div className="lueur-subtitle">{subtitle}</div>
-        </div>
-        <LueurTopbarActions
-          selectedDate={selectedDate}
-          onDateChange={onDateChange}
-          today={today}
-          datesWithData={datesWithData}
-          syncing={syncing}
-          syncLabel={syncLabel}
-          onRefresh={onRefresh}
-        />
-      </div>
-
       <div className="lueur-brief-wrap">
         <DailyBrief
           variant="lueur"
@@ -296,8 +263,20 @@ export function TodayView({
             onClick={() => onNavigate("strain")}
             label="Charge"
           />
-          <MiniRing value={activityPct} color={COLORS.CORAL} label="Activité" />
+          <MiniRing
+            value={activityPct}
+            color={COLORS.TEAL}
+            onClick={() => onNavigate("strain")}
+            label="Pas"
+          />
         </div>
+        <button
+          type="button"
+          className="lueur-hero-detail-link"
+          onClick={() => onNavigate("readiness")}
+        >
+          Détail récupération · tendance 7 j →
+        </button>
       </LueurCard>
 
       <div className="lueur-grid-4">
@@ -319,11 +298,12 @@ export function TodayView({
           </div>
         </LueurCard>
 
-        <LueurCard span2 className="lueur-card--activity lueur-card--tile">
+        <LueurCard span2 className="lueur-card--activity lueur-card--tile" clickable onClick={() => onNavigate("strain")}>
           <div className="lueur-card-head">
             <LueurMetricLabel id="activity_day" as="p" className="lueur-label">
               Activité
             </LueurMetricLabel>
+            <span className="lueur-score-link">Charge →</span>
           </div>
           <div className="lueur-activity-row">
             <div className="lueur-activity-ring-col">
@@ -332,7 +312,7 @@ export function TodayView({
                 radius={32}
                 stroke={9}
                 value={activityPct}
-                color={COLORS.CORAL}
+                color={COLORS.TEAL}
                 className="lueur-activity-ring"
               >
                 <span className="lueur-activity-pct">{activityPct}%</span>
@@ -510,6 +490,18 @@ export function TodayView({
                   {stress.score != null
                     ? `indice ${stress.score}/100${stressCalibrating ? " · provisoire" : ""}`
                     : "—"}
+                  {!stressCalibrating && (
+                    <>
+                      {" · "}
+                      <button
+                        type="button"
+                        className="lueur-inline-nav-link"
+                        onClick={() => onNavigate("plus")}
+                      >
+                        Courbe 14 j →
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             }
@@ -530,26 +522,25 @@ export function TodayView({
                 gradient="blue"
                 valueUnit="%"
                 caption={
-                  spo2History.length > 0 ? `tendance ${spo2History.length} j` : "—"
+                  spo2History.length > 0 ? (
+                    <>
+                      tendance {spo2History.length} j ·{" "}
+                      <button
+                        type="button"
+                        className="lueur-inline-nav-link"
+                        onClick={() => onNavigate("plus")}
+                      >
+                        Analyses →
+                      </button>
+                    </>
+                  ) : (
+                    "—"
+                  )
                 }
               />
             }
           />
         )}
-
-        <LueurCard span4>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-            <LueurMetricLabel id="trends" as="p" className="lueur-label">
-              Récupération · 7 jours
-            </LueurMetricLabel>
-            {trendAvg != null && (
-              <span style={{ fontSize: 13, color: "var(--lueur-text-secondary)" }}>
-                Moyenne <b style={{ color: "var(--lueur-text)" }}>{trendAvg}</b>
-              </span>
-            )}
-          </div>
-          <TrendBars data={trend} />
-        </LueurCard>
       </div>
     </div>
   );

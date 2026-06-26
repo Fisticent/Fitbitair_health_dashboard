@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { useMemo } from "react";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { LueurDashboard } from "./components/lueur/LueurDashboard";
 import { LoginView } from "./components/lueur/LoginView";
 import { useAuth } from "./hooks/useAuth";
@@ -18,12 +19,12 @@ function readAuthError() {
 export default function App() {
   const authError = useMemo(() => readAuthError(), []);
   const { loading: authLoading, authRequired, authenticated, user, login, logout } = useAuth();
-  const { ready: settingsReady } = useUserSettingsSync({ enabled: authenticated });
+  const settingsSyncEnabled = authRequired && authenticated;
+  const { ready: settingsReady } = useUserSettingsSync({ enabled: settingsSyncEnabled });
   const canLoadDashboard =
-    (!authRequired || authenticated) && (!authenticated || settingsReady);
+    (!authRequired || authenticated) && (!settingsSyncEnabled || settingsReady);
   const {
     data,
-    loading,
     syncing,
     refreshing,
     error,
@@ -50,47 +51,53 @@ export default function App() {
     return <LoginView onLogin={login} authError={authError} user={user} />;
   }
 
-  return (
-    <>
-      {loading && !data && (
-        <div className="lueur-state-fullscreen">
-          <motion.div
-            className="lueur-loader"
-            animate={{ rotate: 360 }}
-            transition={{ repeat: Infinity, duration: 1.2, ease: "linear" }}
-          />
-          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
-            Connexion Google Health…
-          </motion.p>
-        </div>
-      )}
+  const waitingForDashboard = !data && !error;
 
-      {error && !data && (
-        <div className="lueur-state-fullscreen">
-          <h2>Connexion impossible</h2>
-          <p>{error}</p>
-          <code>cd dashboard/server && py -3 -m uvicorn main:app --host 127.0.0.1 --port 8000</code>
-          <button type="button" className="lueur-btn-sync" onClick={refresh}>
-            Réessayer
-          </button>
-        </div>
-      )}
+  if (error && !data) {
+    return (
+      <div className="lueur-state-fullscreen">
+        <h2>Connexion impossible</h2>
+        <p>{error}</p>
+        <code>cd dashboard/server && py -3 -m uvicorn main:app --host 127.0.0.1 --port 8000</code>
+        <button type="button" className="lueur-btn-sync" onClick={refresh}>
+          Réessayer
+        </button>
+      </div>
+    );
+  }
 
-      {data && (
-        <LueurDashboard
-          data={data}
-          selectedDate={selectedDate}
-          onDateChange={setSelectedDate}
-          onRefresh={refresh}
-          syncing={syncing}
-          refreshing={refreshing}
-          error={error}
-          syncMessage={syncMessage}
-          onReload={reload}
-          onLogout={authRequired ? logout : null}
-          user={user}
+  if (waitingForDashboard) {
+    return (
+      <div className="lueur-state-fullscreen">
+        <motion.div
+          className="lueur-loader"
+          animate={{ rotate: 360 }}
+          transition={{ repeat: Infinity, duration: 1.2, ease: "linear" }}
         />
-      )}
-    </>
+        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
+          {!canLoadDashboard
+            ? "Chargement des préférences…"
+            : "Connexion Google Health… (première sync ~30 s)"}
+        </motion.p>
+      </div>
+    );
+  }
+
+  return (
+    <ErrorBoundary>
+      <LueurDashboard
+        data={data}
+        selectedDate={selectedDate}
+        onDateChange={setSelectedDate}
+        onRefresh={refresh}
+        syncing={syncing}
+        refreshing={refreshing}
+        error={error}
+        syncMessage={syncMessage}
+        onReload={reload}
+        onLogout={authRequired ? logout : null}
+        user={user}
+      />
+    </ErrorBoundary>
   );
 }

@@ -157,7 +157,12 @@ def _resolve_dashboard_context(
     query_overrides = _parse_profile_overrides(
         sex=sex, dob=dob, height_cm=height_cm, weight_kg=weight_kg
     )
-    stored = us.get_settings(user["email"]) if user and user.get("email") else {}
+    if user and user.get("email"):
+        stored = us.get_settings(user["email"])
+    elif not auth.auth_enabled():
+        stored = us.get_settings(us.LOCAL_DEV_USER)
+    else:
+        stored = {}
     stored_overrides = us.profile_overrides_to_api(stored.get("profile_overrides") or {})
     overrides = {**stored_overrides, **query_overrides}
     return overrides, stored
@@ -638,24 +643,28 @@ def auth_logout(request: Request):
     return auth.logout(request)
 
 
+def _settings_user(user: dict | None) -> str:
+    if user:
+        return user["email"]
+    if not auth.auth_enabled():
+        return us.LOCAL_DEV_USER
+    raise HTTPException(status_code=401, detail="Authentification requise")
+
+
 @app.get("/api/user-settings")
 def get_user_settings(user: dict | None = Depends(auth.require_user)):
-    if not user:
-        raise HTTPException(status_code=401, detail="Authentification requise")
-    return us.get_settings(user["email"])
+    return us.get_settings(_settings_user(user))
 
 
 @app.put("/api/user-settings")
 async def put_user_settings(request: Request, user: dict | None = Depends(auth.require_user)):
-    if not user:
-        raise HTTPException(status_code=401, detail="Authentification requise")
     try:
         payload = await request.json()
     except Exception as exc:
         raise HTTPException(status_code=400, detail="JSON invalide") from exc
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Corps de requête invalide")
-    return us.replace_settings(user["email"], payload)
+    return us.replace_settings(_settings_user(user), payload)
 
 
 @app.get("/api/dashboard")

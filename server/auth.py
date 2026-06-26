@@ -155,7 +155,7 @@ def callback_handler(
 
 def me_payload(request: Request) -> dict[str, Any]:
     if not auth_enabled():
-        return {"auth_required": False, "authenticated": True}
+        return {"auth_required": False, "authenticated": False}
     email = request.session.get(SESSION_USER_KEY)
     if not email:
         return {"auth_required": True, "authenticated": False}

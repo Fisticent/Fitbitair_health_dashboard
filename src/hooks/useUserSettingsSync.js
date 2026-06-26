@@ -21,6 +21,8 @@ function hasRemoteData(data) {
   return hasLocalData(data);
 }
 
+const SETTINGS_SYNC_TIMEOUT_MS = 10_000;
+
 export function useUserSettingsSync({ enabled = false } = {}) {
   const [ready, setReady] = useState(!enabled);
 
@@ -49,8 +51,13 @@ export function useUserSettingsSync({ enabled = false } = {}) {
 
     (async () => {
       setReady(false);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), SETTINGS_SYNC_TIMEOUT_MS);
       try {
-        const res = await fetch("/api/user-settings", API_CREDENTIALS);
+        const res = await fetch("/api/user-settings", {
+          ...API_CREDENTIALS,
+          signal: controller.signal,
+        });
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}`);
         }
@@ -63,8 +70,9 @@ export function useUserSettingsSync({ enabled = false } = {}) {
           await push(local);
         }
       } catch {
-        // Offline or API unavailable — keep local cache.
+        // Offline, timeout, or API unavailable — keep local cache.
       } finally {
+        clearTimeout(timeoutId);
         if (!cancelled) setReady(true);
       }
     })();

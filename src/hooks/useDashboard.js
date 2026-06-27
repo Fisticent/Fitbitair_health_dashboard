@@ -20,6 +20,7 @@ export function useDashboard({ enabled = true } = {}) {
   const [error, setError] = useState(null);
   const [selectedDate, setSelectedDate] = useState(todayIso);
   const [syncMessage, setSyncMessage] = useState(null);
+  const skipNextLoad = useRef(false);
 
   const load = useCallback(async (day, { initial = false } = {}) => {
     if (initial) setLoading(true);
@@ -41,8 +42,11 @@ export function useDashboard({ enabled = true } = {}) {
       }
       const json = await res.json();
       setData(json);
-      if (json.today && initial) {
-        setSelectedDate(json.today);
+      // Adopt the date the backend actually used (it may fall back to J-1 when
+      // today has no sleep/rest yet). Skip the resulting effect re-fetch.
+      if (json.focus_date && initial && json.focus_date !== selectedDate) {
+        skipNextLoad.current = true;
+        setSelectedDate(json.focus_date);
       }
       return json;
     } catch (e) {
@@ -93,6 +97,10 @@ export function useDashboard({ enabled = true } = {}) {
 
   useEffect(() => {
     if (!enabled) return;
+    if (skipNextLoad.current) {
+      skipNextLoad.current = false;
+      return;
+    }
     load(selectedDate, { initial: initialLoad.current });
     initialLoad.current = false;
   }, [selectedDate, load, enabled]);

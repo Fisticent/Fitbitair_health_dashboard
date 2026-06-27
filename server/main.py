@@ -442,6 +442,14 @@ def build_dashboard(
     if focus > today:
         focus = today
 
+    # If we land on today but the night hasn't synced yet (no sleep and no
+    # resting HR), fall back to the most recent prior day that has data — last
+    # night is far more useful than an empty "today" early in the morning.
+    if focus == today and today not in sleep and today not in rhr:
+        recent = [d for d in all_dates if d < today and (d in sleep or d in rhr)]
+        if recent:
+            focus = recent[-1]
+
     prior_day = (date_type.fromisoformat(focus) - timedelta(days=1)).isoformat()
     strain_kw = _strain_ctx(parsed)
     # Strain per day, computed once and reused (stress motion-compensation,

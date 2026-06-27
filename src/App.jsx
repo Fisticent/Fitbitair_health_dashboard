@@ -1,7 +1,8 @@
 import { motion } from "framer-motion";
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { LueurDashboard } from "./components/lueur/LueurDashboard";
+import { LueurLoadingSequence } from "./components/lueur/LueurLoadingSequence";
 import { LoginView } from "./components/lueur/LoginView";
 import { useAuth } from "./hooks/useAuth";
 import { useDashboard } from "./hooks/useDashboard";
@@ -35,6 +36,14 @@ export default function App() {
     reload,
   } = useDashboard({ enabled: canLoadDashboard });
 
+  // Keep the premium loading sequence on screen long enough to be enjoyed even
+  // when the cache is warm and data returns almost instantly.
+  const [minDisplayDone, setMinDisplayDone] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setMinDisplayDone(true), 1800);
+    return () => clearTimeout(t);
+  }, []);
+
   if (authLoading) {
     return (
       <div className="lueur-state-fullscreen">
@@ -66,20 +75,17 @@ export default function App() {
     );
   }
 
-  if (waitingForDashboard) {
+  if (waitingForDashboard || !minDisplayDone) {
     return (
-      <div className="lueur-state-fullscreen">
-        <motion.div
-          className="lueur-loader"
-          animate={{ rotate: 360 }}
-          transition={{ repeat: Infinity, duration: 1.2, ease: "linear" }}
-        />
-        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
-          {!canLoadDashboard
-            ? "Chargement des préférences…"
-            : "Connexion Google Health… (première sync ~30 s)"}
-        </motion.p>
-      </div>
+      <LueurLoadingSequence
+        subtitle={
+          !canLoadDashboard
+            ? "Chargement de tes préférences…"
+            : waitingForDashboard
+              ? "Première synchronisation Google Health…"
+              : "Préparation de ton tableau de bord…"
+        }
+      />
     );
   }
 

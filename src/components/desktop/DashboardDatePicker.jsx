@@ -1,10 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { format, subDays } from "date-fns";
 import { fr } from "date-fns/locale";
 import { CalendarIcon } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Button } from "@/components/ui/button";
 
 const RANGE_DAYS = 90;
 
@@ -34,38 +32,49 @@ export function DashboardDatePicker({
 }) {
   const isLueur = variant === "lueur";
   const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
   const selected = parseIso(value);
   const maxDate = today ? startOfDay(parseIso(today)) : undefined;
   const minDate = maxDate ? startOfDay(subDays(maxDate, RANGE_DAYS)) : undefined;
 
-  const dataSet = useMemo(
-    () => new Set(datesWithData || []),
-    [datesWithData],
-  );
+  const dataSet = useMemo(() => new Set(datesWithData || []), [datesWithData]);
+
+  // Close on outside click / Escape.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
 
   return (
-    <div className={`date-picker-wrap${isLueur ? " date-picker-wrap--lueur" : ""}`}>
+    <div
+      ref={wrapRef}
+      className={`date-picker-wrap${isLueur ? " date-picker-wrap--lueur" : ""}`}
+    >
       {!isLueur && <span className="date-picker-label">Date</span>}
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger
-          render={
-            isLueur ? (
-              <button type="button" className="lueur-toolbar-date" />
-            ) : (
-              <Button variant="outline" size="sm" className="dashboard-date-trigger" />
-            )
-          }
-        >
-          <CalendarIcon data-icon="inline-start" />
-          {selected
-            ? format(selected, "d MMMM yyyy", { locale: fr })
-            : "Choisir une date"}
-        </PopoverTrigger>
-        <PopoverContent
-          className={isLueur ? "w-auto p-0" : "dark w-auto p-0"}
-          align="end"
-          sideOffset={8}
-        >
+      <button
+        type="button"
+        className={isLueur ? "lueur-toolbar-date" : "dashboard-date-trigger"}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <CalendarIcon data-icon="inline-start" size={16} />
+        {selected ? format(selected, "d MMMM yyyy", { locale: fr }) : "Choisir une date"}
+      </button>
+
+      {open && (
+        <div className="date-picker-pop" role="dialog">
           <Calendar
             mode="single"
             locale={fr}
@@ -97,8 +106,8 @@ export function DashboardDatePicker({
             <span className="date-picker-legend-dot date-picker-legend-dot--empty" />
             Jour sans données
           </p>
-        </PopoverContent>
-      </Popover>
+        </div>
+      )}
     </div>
   );
 }

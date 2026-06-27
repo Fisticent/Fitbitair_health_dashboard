@@ -204,13 +204,39 @@ def _cache_fresh() -> bool:
     return _raw_cache is not None and (time.monotonic() - _cache_built_at) < _CACHE_TTL_SECONDS
 
 
+def _refresh_in_background() -> None:
+    """Refresh the raw cache off the request path (stale-while-revalidate).
+
+    Non-blocking lock acquire: if a fetch (foreground or another background one)
+    is already running, skip — it will populate the cache for everyone.
+    """
+    if not _fetch_lock.acquire(blocking=False):
+        return
+
+    def _run() -> None:
+        try:
+            _fetch_raw_locked()
+        except Exception:
+            pass  # errors are captured into _fetch_errors by the fetch itself
+        finally:
+            _fetch_lock.release()
+
+    threading.Thread(target=_run, name="raw-refresh", daemon=True).start()
+
+
 def fetch_raw(force: bool = False) -> dict:
     global _raw_cache, _synced_at, _fetch_errors, _cache_built_at
 
     if not force and _cache_fresh():
         return _raw_cache  # type: ignore[return-value]
 
-    # Serialise fetches so concurrent requests don't all hit the API at once.
+    # Stale-while-revalidate: a stale-but-present cache is served instantly while
+    # a background refresh updates it — nobody waits ~18s for the TTL to lapse.
+    if not force and _raw_cache is not None:
+        _refresh_in_background()
+        return _raw_cache
+
+    # No cache yet (first ever load) or an explicit refresh → block on a real fetch.
     with _fetch_lock:
         # Re-check: another thread may have populated the cache while we waited.
         if not force and _cache_fresh():

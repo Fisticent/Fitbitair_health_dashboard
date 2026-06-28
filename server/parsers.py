@@ -489,7 +489,25 @@ def _sleep_stage_timeline(stages: list[dict]) -> list[dict[str, Any]]:
         lane = STAGE_LANE.get(t)
         if lane is None:
             continue
-        out.append({"start": start, "end": end, "type": t, "lane": lane})
+        seg = {"start": start, "end": end, "type": t, "lane": lane}
+        if out:
+            prev = out[-1]
+            prev_end = prev["end"]
+            if prev["lane"] == lane and start <= prev_end:
+                if end > prev_end:
+                    prev["end"] = end
+                continue
+            try:
+                prev_dt = datetime.fromisoformat(prev_end.replace("Z", "+00:00"))
+                start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
+                if prev["lane"] == lane and (start_dt - prev_dt).total_seconds() <= 60:
+                    end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
+                    if end_dt > prev_dt:
+                        prev["end"] = end
+                    continue
+            except ValueError:
+                pass
+        out.append(seg)
     return out
 
 

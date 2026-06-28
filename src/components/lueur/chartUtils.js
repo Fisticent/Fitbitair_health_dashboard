@@ -278,11 +278,35 @@ export function formatStepsWithKm(steps, distanceKm) {
   return km ? `${pas} · ${km} km` : pas;
 }
 
+/** Merge adjacent timeline chunks with the same stage (Health Connect → 1 min slices). */
+function coalesceHypnoTimeline(timeline) {
+  if (!timeline?.length) return [];
+  const sorted = [...timeline].sort(
+    (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime(),
+  );
+  const merged = [{ ...sorted[0] }];
+  for (let i = 1; i < sorted.length; i += 1) {
+    const prev = merged[merged.length - 1];
+    const cur = sorted[i];
+    const prevLane = prev.lane ?? 2;
+    const curLane = cur.lane ?? 2;
+    const prevEnd = new Date(prev.end).getTime();
+    const curStart = new Date(cur.start).getTime();
+    const curEnd = new Date(cur.end).getTime();
+    if (prevLane === curLane && curStart <= prevEnd + 60_000) {
+      prev.end = new Date(Math.max(prevEnd, curEnd)).toISOString();
+      continue;
+    }
+    merged.push({ ...cur });
+  }
+  return merged;
+}
+
 /** Build hypnogram rects from API stage timeline (chronological). */
 export function timelineToHypnoRects(timeline, width, laneY, barH) {
   if (!timeline?.length) return { rects: [], spanMs: 0 };
 
-  const parsed = timeline
+  const parsed = coalesceHypnoTimeline(timeline)
     .map((seg) => ({
       ...seg,
       t0: new Date(seg.start).getTime(),
@@ -301,7 +325,7 @@ export function timelineToHypnoRects(timeline, width, laneY, barH) {
   const rects = parsed.map((seg, i) => {
     const x0 = ((seg.t0 - minT) / spanMs) * width;
     const x1 = ((seg.t1 - minT) / spanMs) * width;
-    const w = Math.max(2, x1 - x0 - 1);
+    const w = Math.max(1, x1 - x0);
     const lane = Math.min(3, Math.max(0, seg.lane));
     return {
       key: i,

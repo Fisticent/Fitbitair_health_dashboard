@@ -175,6 +175,13 @@ export function formatSleepDuration(hours) {
   return `${h}h ${String(m).padStart(2, "0")}`;
 }
 
+/** Secondary line when naps contribute to the day's total sleep. */
+export function formatSleepNapSubtitle(sleep) {
+  if (!sleep?.naps_hours || sleep.naps_hours <= 0) return null;
+  const main = sleep.main_hours ?? Math.max(0, (sleep.hours ?? 0) - sleep.naps_hours);
+  return `${formatSleepDuration(main)} nuit · +${formatSleepDuration(sleep.naps_hours)} sieste`;
+}
+
 export function formatMinutes(min) {
   if (min == null) return "—";
   const h = Math.floor(min / 60);

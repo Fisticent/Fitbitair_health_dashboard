@@ -7,6 +7,7 @@ import {
   zoneColor,
   zonePill,
   formatSleepDuration,
+  formatSleepNapSubtitle,
   formatClockTime,
   scoreStatusLabel,
   formatKm,
@@ -291,6 +292,11 @@ export function TodayView({
           </div>
           <div className="lueur-metric-row">
             <span className="lueur-metric-xl">{formatSleepDuration(sleep?.hours)}</span>
+            {formatSleepNapSubtitle(sleep) && (
+              <span className="lueur-meta" style={{ display: "block", marginTop: 6 }}>
+                {formatSleepNapSubtitle(sleep)}
+              </span>
+            )}
           </div>
           <SleepMetaGrid sleep={sleep} sleepDebt7={sleepDebt7} />
           <div className="lueur-card-tile-foot">

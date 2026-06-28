@@ -48,12 +48,20 @@ function buildMetrics({ recovery, strain, strainFit, sleep, steps, stepsGoal, st
   }
 
   if (sleep?.hours != null) {
+    const sleepSub = [
+      sleep.score != null ? `Score ${sleep.score} %` : null,
+      sleep.naps_hours > 0
+        ? `${formatSleepHours(sleep.main_hours)} nuit · +${formatSleepHours(sleep.naps_hours)} sieste`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
     items.push({
       key: "sleep",
       label: "Sommeil",
       value: formatSleepHours(sleep.hours),
       unit: null,
-      sub: sleep.score != null ? `Score ${sleep.score} %` : null,
+      sub: sleepSub || null,
       accent: "#5b8def",
     });
   }

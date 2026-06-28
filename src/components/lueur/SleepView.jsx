@@ -3,7 +3,7 @@ import { LueurCard } from "./LueurCard";
 import { ProgressRing } from "./ProgressRing";
 import { HypnogramFull, StageBreakdown } from "./Hypnogram";
 import { LargeSparkChart } from "./MiniSparkChart";
-import { COLORS, formatDateLong, formatSleepDuration, formatMinutes, formatClockTime, scoreStatusLabel } from "./chartUtils";
+import { COLORS, formatDateLong, formatSleepDuration, formatSleepNapSubtitle, formatMinutes, formatClockTime, scoreStatusLabel } from "./chartUtils";
 import { scoreZone } from "../../utils/metricStatus";
 import { formatMetricValue } from "../../utils/formatMetric";
 import { cumulativeSleepDebt } from "../../utils/sleepDebt";
@@ -87,6 +87,11 @@ export function SleepView({ data, onBack, history }) {
             <div>
               <div className="lueur-metric-md">{formatSleepDuration(sleep?.hours)}</div>
               <div style={{ fontSize: 12.5, color: "var(--lueur-muted)" }}>durée totale</div>
+              {formatSleepNapSubtitle(sleep) && (
+                <div style={{ fontSize: 12, color: "var(--lueur-text-secondary)", marginTop: 4 }}>
+                  {formatSleepNapSubtitle(sleep)}
+                </div>
+              )}
             </div>
             <div>
               <div className="lueur-metric-md">{formatSleepDuration(timeInBed)}</div>

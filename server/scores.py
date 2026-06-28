@@ -39,6 +39,13 @@ def recovery_color(zone: str) -> str:
     return {"green": "#00D68F", "yellow": "#FFB020", "red": "#FF4D4D"}.get(zone, "#888")
 
 
+def total_asleep_min(session: dict | None) -> float:
+    """Asleep minutes for a day, including naps when aggregated by the parser."""
+    if not session:
+        return 0.0
+    return float(session.get("total_asleep_min", session.get("asleep_min", 0)))
+
+
 def sleep_need_hours(prior_strain: float = 0.0, recent_debt_h: float = 0.0) -> float:
     """Sleep need in hours, rising with the previous day's strain (0–100 %) and
     with accumulated sleep debt from recent nights.
@@ -73,7 +80,7 @@ def recent_sleep_debt_h(
         s = sleep.get((f - timedelta(days=i)).isoformat())
         if not s:
             continue
-        debt += max(0.0, baseline_h - s.get("asleep_min", 0) / 60)
+        debt += max(0.0, baseline_h - total_asleep_min(s) / 60)
     return round(debt, 2)
 
 
@@ -92,12 +99,12 @@ def compute_recovery(
     hist_dates = [d for d in dates if d < day][-14:]
     hrv_hist = [hrv[d] for d in hist_dates if d in hrv]
     rhr_hist = [rhr[d] for d in hist_dates if d in rhr]
-    sleep_hist = [sleep[d]["asleep_min"] / 60 for d in hist_dates if d in sleep]
+    sleep_hist = [total_asleep_min(sleep[d]) / 60 for d in hist_dates if d in sleep]
     resp_hist = [resp[d] for d in hist_dates if d in resp]
 
     hrv_val = hrv.get(day)
     rhr_val = rhr.get(day)
-    sleep_val = sleep.get(day, {}).get("asleep_min", 0) / 60
+    sleep_val = total_asleep_min(sleep.get(day)) / 60
     resp_val = resp.get(day)
     temp_today = (skin_temp or {}).get(day) or {}
     temp_dev = temp_today.get("deviation")
@@ -242,11 +249,13 @@ def compute_strain(
 
 def compute_sleep_score(day: str, sleep: dict[str, dict], need: float = 7.5) -> dict[str, Any]:
     s = sleep.get(day, {})
-    asleep_min = s.get("asleep_min", 0)
-    asleep_h = asleep_min / 60
-    perf_dur = min(100, (asleep_h / need) * 100) if need else 0
-    deep_pct = (s.get("deep", 0) / max(asleep_min, 1)) * 100
-    rem_pct = (s.get("rem", 0) / max(asleep_min, 1)) * 100
+    main_asleep_min = s.get("asleep_min", 0)
+    day_total_min = total_asleep_min(s)
+    main_asleep_h = main_asleep_min / 60
+    total_asleep_h = day_total_min / 60
+    perf_dur = min(100, (main_asleep_h / need) * 100) if need else 0
+    deep_pct = (s.get("deep", 0) / max(main_asleep_min, 1)) * 100
+    rem_pct = (s.get("rem", 0) / max(main_asleep_min, 1)) * 100
     perf_qual = min(100, 0.5 * min(100, deep_pct / 15 * 100) + 0.5 * min(100, rem_pct / 22 * 100))
 
     # Oura/Garmin-style weighted blend. Duration leads; efficiency and onset
@@ -265,11 +274,15 @@ def compute_sleep_score(day: str, sleep: dict[str, dict], need: float = 7.5) -> 
     score = round(sum(w * v for w, v in parts) / total_w)
 
     total_min = s.get("total_min", 0)
-    debt_hours = round(max(0.0, need - asleep_h), 2) if need else None
+    debt_hours = round(max(0.0, need - total_asleep_h), 2) if need else None
+    naps_min = s.get("naps_min", 0)
     return {
         "date": day,
         "score": score,
-        "hours": round(asleep_h, 2),
+        "hours": round(total_asleep_h, 2),
+        "main_hours": round(main_asleep_h, 2),
+        "naps_hours": round(naps_min / 60, 2),
+        "nap_count": int(s.get("nap_count", 0)),
         "need": need,
         "debt_hours": debt_hours,
         "efficiency": round(s.get("efficiency", 0)),
@@ -772,7 +785,7 @@ def compute_physiological_age(
         neutral = 66 if sex == "female" else 62
         factors.append(("FC repos", round(_graded(sum(rhr_vals) / len(rhr_vals), neutral, 0.1, -1.0, 2.0), 2)))
 
-    sleep_h = [sleep[d]["asleep_min"] / 60 for d in dates if d in sleep]
+    sleep_h = [total_asleep_min(sleep[d]) / 60 for d in dates if d in sleep]
     if sleep_h:
         domains += 1
         # Below 7.5h penalises; modest credit for sleeping at/above target.

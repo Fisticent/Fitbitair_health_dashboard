@@ -508,7 +508,7 @@ def _sleep_latency_min(bed_start: str | None, stages: list[dict]) -> float | Non
 
 
 def parse_sleep_sessions(points: list[dict]) -> dict[str, dict[str, float]]:
-    """Best sleep session per end-date (minutes by stage)."""
+    """Main sleep session per end-date, with total duration including naps."""
     sessions: list[dict[str, Any]] = []
     for p in points:
         sleep = p.get("sleep")
@@ -556,11 +556,23 @@ def parse_sleep_sessions(points: list[dict]) -> dict[str, dict[str, float]]:
             }
         )
 
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for sess in sessions:
+        grouped.setdefault(sess["date"], []).append(sess)
+
     by_date: dict[str, dict] = {}
-    for s in sessions:
-        prev = by_date.get(s["date"])
-        if not prev or s["asleep_min"] > prev["asleep_min"]:
-            by_date[s["date"]] = s
+    for date_key, day_sessions in grouped.items():
+        main = max(day_sessions, key=lambda row: row["asleep_min"])
+        total_asleep = sum(row["asleep_min"] for row in day_sessions)
+        naps_min = max(0.0, total_asleep - main["asleep_min"])
+        nap_count = max(0, len(day_sessions) - 1)
+        by_date[date_key] = {
+            **main,
+            "total_asleep_min": total_asleep,
+            "naps_min": naps_min,
+            "nap_count": nap_count,
+            "session_count": len(day_sessions),
+        }
     return by_date
 
 

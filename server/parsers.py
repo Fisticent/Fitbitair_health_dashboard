@@ -507,8 +507,93 @@ def _sleep_latency_min(bed_start: str | None, stages: list[dict]) -> float | Non
     return None
 
 
+_SLEEP_OVERLAP_THRESHOLD = 0.70
+_SLEEP_MERGE_GAP_MIN = 120
+
+_PLATFORM_RANK: dict[str, int] = {
+    "HEALTH_CONNECT": 0,
+    "FITBIT": 1,
+}
+
+
+def _sleep_platform(point: dict) -> str:
+    return str((point.get("dataSource") or {}).get("platform") or "").upper()
+
+
+def _parse_iso_dt(iso: str) -> datetime:
+    return datetime.fromisoformat(iso.replace("Z", "+00:00"))
+
+
+def _sleep_overlap_ratio(left: dict, right: dict) -> float:
+    a0 = _parse_iso_dt(left["bedtime"])
+    a1 = _parse_iso_dt(left["wakeup"])
+    b0 = _parse_iso_dt(right["bedtime"])
+    b1 = _parse_iso_dt(right["wakeup"])
+    latest = max(a0, b0)
+    earliest = min(a1, b1)
+    if earliest <= latest:
+        return 0.0
+    overlap_min = (earliest - latest).total_seconds() / 60.0
+    dur_a = (a1 - a0).total_seconds() / 60.0
+    dur_b = (b1 - b0).total_seconds() / 60.0
+    shorter = min(dur_a, dur_b)
+    return overlap_min / shorter if shorter > 0 else 0.0
+
+
+def _dedupe_sleep_sessions(sessions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop overlapping sessions from secondary sources (Nest vs watch)."""
+    ordered = sorted(
+        sessions,
+        key=lambda row: (
+            _PLATFORM_RANK.get(row.get("platform", ""), 99),
+            -row["asleep_min"],
+        ),
+    )
+    kept: list[dict[str, Any]] = []
+    for sess in ordered:
+        if any(
+            _sleep_overlap_ratio(sess, prev) >= _SLEEP_OVERLAP_THRESHOLD for prev in kept
+        ):
+            continue
+        kept.append(sess)
+    return kept
+
+
+def _merge_close_night_sessions(
+    sessions: list[dict[str, Any]],
+    gap_min: float = _SLEEP_MERGE_GAP_MIN,
+) -> list[dict[str, Any]]:
+    """Merge fragmented main-sleep blocks separated by short wake-ups."""
+    if len(sessions) <= 1:
+        return sessions
+    ordered = sorted(sessions, key=lambda row: row["bedtime"])
+    merged: list[dict[str, Any]] = [dict(ordered[0])]
+    for sess in ordered[1:]:
+        prev = merged[-1]
+        gap = (
+            _parse_iso_dt(sess["bedtime"]) - _parse_iso_dt(prev["wakeup"])
+        ).total_seconds() / 60.0
+        if gap > gap_min:
+            merged.append(dict(sess))
+            continue
+        stage_source = prev if prev["asleep_min"] >= sess["asleep_min"] else sess
+        prev["asleep_min"] += sess["asleep_min"]
+        prev["total_min"] += sess["total_min"]
+        for key in ("deep", "rem", "light", "awake"):
+            prev[key] += sess[key]
+        if _parse_iso_dt(sess["wakeup"]) > _parse_iso_dt(prev["wakeup"]):
+            prev["wakeup"] = sess["wakeup"]
+        if _parse_iso_dt(sess["bedtime"]) < _parse_iso_dt(prev["bedtime"]):
+            prev["bedtime"] = sess["bedtime"]
+        prev["stage_timeline"] = stage_source.get("stage_timeline") or []
+        prev["latency_min"] = stage_source.get("latency_min")
+        total = prev["total_min"]
+        prev["efficiency"] = (prev["asleep_min"] / total * 100) if total else 0
+    return merged
+
+
 def parse_sleep_sessions(points: list[dict]) -> dict[str, dict[str, float]]:
-    """Main sleep session per end-date, with total duration including naps."""
+    """Main sleep per end-date, real naps only, with duplicate-source dedupe."""
     sessions: list[dict[str, Any]] = []
     for p in points:
         sleep = p.get("sleep")
@@ -517,7 +602,7 @@ def parse_sleep_sessions(points: list[dict]) -> dict[str, dict[str, float]]:
         interval = sleep.get("interval", {})
         end = interval.get("endTime")
         start = interval.get("startTime")
-        if not end:
+        if not end or not start:
             continue
         end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
         key = end_dt.strftime("%Y-%m-%d")
@@ -536,22 +621,29 @@ def parse_sleep_sessions(points: list[dict]) -> dict[str, dict[str, float]]:
             elif t == "AWAKE":
                 stage_mins["awake"] += dur
 
-        total = sum(stage_mins.values()) or parse_iso_duration(
-            interval["startTime"], interval["endTime"]
-        )
+        total = sum(stage_mins.values()) or parse_iso_duration(start, end)
         asleep = total - stage_mins["awake"]
+        summary = sleep.get("summary") or {}
+        if summary.get("minutesAsleep") is not None:
+            asleep_min = float(summary["minutesAsleep"])
+        else:
+            asleep_min = max(0.0, asleep)
+        if summary.get("minutesInSleepPeriod") is not None:
+            total = float(summary["minutesInSleepPeriod"])
         latency = _sleep_latency_min(start, stages)
         timeline = _sleep_stage_timeline(stages)
         sessions.append(
             {
                 "date": key,
                 "total_min": total,
-                "asleep_min": max(0, asleep),
-                "efficiency": (asleep / total * 100) if total else 0,
+                "asleep_min": asleep_min,
+                "efficiency": (asleep_min / total * 100) if total else 0,
                 "bedtime": start,
                 "wakeup": end,
                 "latency_min": latency,
                 "stage_timeline": timeline,
+                "is_nap": (sleep.get("metadata") or {}).get("nap") is True,
+                "platform": _sleep_platform(p),
                 **stage_mins,
             }
         )
@@ -562,16 +654,28 @@ def parse_sleep_sessions(points: list[dict]) -> dict[str, dict[str, float]]:
 
     by_date: dict[str, dict] = {}
     for date_key, day_sessions in grouped.items():
-        main = max(day_sessions, key=lambda row: row["asleep_min"])
-        total_asleep = sum(row["asleep_min"] for row in day_sessions)
-        naps_min = max(0.0, total_asleep - main["asleep_min"])
-        nap_count = max(0, len(day_sessions) - 1)
+        kept = _dedupe_sleep_sessions(day_sessions)
+        nights = _merge_close_night_sessions([s for s in kept if not s.get("is_nap")])
+        naps = [s for s in kept if s.get("is_nap")]
+        if not nights and not naps:
+            continue
+        main = max(nights, key=lambda row: row["asleep_min"]) if nights else max(
+            naps, key=lambda row: row["asleep_min"]
+        )
+        naps_min = sum(n["asleep_min"] for n in naps)
+        main_asleep = main["asleep_min"] if nights else 0.0
+        if nights:
+            total_asleep = main_asleep + naps_min
+        else:
+            total_asleep = naps_min
+            naps_min = 0.0
         by_date[date_key] = {
             **main,
+            "asleep_min": main_asleep if nights else main["asleep_min"],
             "total_asleep_min": total_asleep,
             "naps_min": naps_min,
-            "nap_count": nap_count,
-            "session_count": len(day_sessions),
+            "nap_count": len(naps),
+            "session_count": len(kept),
         }
     return by_date
 

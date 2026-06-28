@@ -4,8 +4,15 @@ from parsers import parse_sleep_sessions
 import scores as s
 
 
-def _sleep_point(date: str, start: str, end: str, asleep_min: float) -> dict:
-    return {
+def _sleep_point(
+    start: str,
+    end: str,
+    minutes_asleep: int,
+    *,
+    nap: bool = False,
+    platform: str | None = None,
+) -> dict:
+    point: dict = {
         "sleep": {
             "interval": {"startTime": start, "endTime": end},
             "stages": [
@@ -15,16 +22,32 @@ def _sleep_point(date: str, start: str, end: str, asleep_min: float) -> dict:
                     "endTime": end,
                 }
             ],
+            "summary": {"minutesAsleep": minutes_asleep},
+            "metadata": {"nap": True} if nap else {},
         }
     }
+    if platform:
+        point["dataSource"] = {"platform": platform}
+    return point
 
 
 class ParseSleepSessionsTests(unittest.TestCase):
-    def test_sums_naps_into_total(self):
+    def test_sums_real_naps_flagged_by_api(self):
         day = "2026-06-27"
         points = [
-            _sleep_point(day, "2026-06-26T23:00:00Z", "2026-06-27T06:00:00Z", 420),
-            _sleep_point(day, "2026-06-27T14:00:00Z", "2026-06-27T16:00:00Z", 120),
+            _sleep_point(
+                "2026-06-26T23:00:00Z",
+                "2026-06-27T06:00:00Z",
+                420,
+                platform="HEALTH_CONNECT",
+            ),
+            _sleep_point(
+                "2026-06-27T14:00:00Z",
+                "2026-06-27T16:00:00Z",
+                120,
+                nap=True,
+                platform="HEALTH_CONNECT",
+            ),
         ]
         parsed = parse_sleep_sessions(points)
         row = parsed[day]
@@ -36,11 +59,55 @@ class ParseSleepSessionsTests(unittest.TestCase):
 
     def test_single_session_has_no_nap_fields(self):
         day = "2026-06-27"
-        points = [_sleep_point(day, "2026-06-26T23:00:00Z", "2026-06-27T07:30:00Z", 450)]
+        points = [
+            _sleep_point(
+                "2026-06-26T23:00:00Z",
+                "2026-06-27T07:30:00Z",
+                450,
+                platform="HEALTH_CONNECT",
+            )
+        ]
         row = parse_sleep_sessions(points)[day]
         self.assertEqual(row["total_asleep_min"], row["asleep_min"])
         self.assertEqual(row["naps_min"], 0)
         self.assertEqual(row["nap_count"], 0)
+
+    def test_prefers_health_connect_over_overlapping_nest(self):
+        day = "2026-06-28"
+        points = [
+            _sleep_point(
+                "2026-06-28T04:29:00Z",
+                "2026-06-28T09:30:00Z",
+                294,
+                platform="FITBIT",
+            ),
+            _sleep_point(
+                "2026-06-28T04:21:50.630Z",
+                "2026-06-28T09:40:55.256Z",
+                285,
+                platform="HEALTH_CONNECT",
+            ),
+            _sleep_point(
+                "2026-06-28T14:53:00Z",
+                "2026-06-28T16:43:00Z",
+                101,
+                nap=True,
+                platform="FITBIT",
+            ),
+            _sleep_point(
+                "2026-06-28T14:50:44.982Z",
+                "2026-06-28T15:39:47.124Z",
+                41,
+                nap=True,
+                platform="HEALTH_CONNECT",
+            ),
+        ]
+        row = parse_sleep_sessions(points)[day]
+        self.assertAlmostEqual(row["asleep_min"], 285)
+        self.assertAlmostEqual(row["naps_min"], 41)
+        self.assertAlmostEqual(row["total_asleep_min"], 326)
+        self.assertEqual(row["nap_count"], 1)
+        self.assertEqual(row["session_count"], 2)
 
 
 class ComputeSleepScoreTests(unittest.TestCase):

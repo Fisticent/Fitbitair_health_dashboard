@@ -2916,35 +2916,6 @@ body {
   width: auto;
 }
 
-/* Custom calendar popover — anchored under the trigger, right-aligned. */
-.date-picker-wrap {
-  position: relative;
-}
-
-.date-picker-pop {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  z-index: 200;
-  background: var(--lueur-card);
-  border: 1px solid var(--lueur-border);
-  border-radius: 16px;
-  box-shadow: var(--lueur-shadow-hero);
-  padding: 12px;
-  animation: lueur-pop-in 0.14s var(--lueur-ease);
-}
-
-@keyframes lueur-pop-in {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 /* Plus / embedded panels */
 .lueur-panel-section {
   margin-top: 20px;

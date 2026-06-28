@@ -648,6 +648,9 @@ def parse_sleep_sessions(points: list[dict]) -> dict[str, dict[str, float]]:
             asleep_min = max(0.0, asleep)
         if summary.get("minutesInSleepPeriod") is not None:
             total = float(summary["minutesInSleepPeriod"])
+        # Time-in-bed can never be shorter than time-asleep; clamp so a missing
+        # minutesInSleepPeriod (total from sparse stages) can't yield efficiency > 100%.
+        total = max(total, asleep_min)
         latency = _sleep_latency_min(start, stages)
         timeline = _sleep_stage_timeline(stages)
         sessions.append(
@@ -677,19 +680,22 @@ def parse_sleep_sessions(points: list[dict]) -> dict[str, dict[str, float]]:
         naps = [s for s in kept if s.get("is_nap")]
         if not nights and not naps:
             continue
-        main = max(nights, key=lambda row: row["asleep_min"]) if nights else max(
-            naps, key=lambda row: row["asleep_min"]
-        )
         naps_min = sum(n["asleep_min"] for n in naps)
-        main_asleep = main["asleep_min"] if nights else 0.0
         if nights:
-            total_asleep = main_asleep + naps_min
+            main = max(nights, key=lambda row: row["asleep_min"])
+            main_asleep = main["asleep_min"]
+            # Sum every distinct night block (not just the longest) so a second
+            # genuine sleep ending the same day isn't dropped from the day total.
+            nights_asleep = sum(n["asleep_min"] for n in nights)
+            total_asleep = nights_asleep + naps_min
         else:
+            main = max(naps, key=lambda row: row["asleep_min"])
+            main_asleep = main["asleep_min"]
             total_asleep = naps_min
             naps_min = 0.0
         by_date[date_key] = {
             **main,
-            "asleep_min": main_asleep if nights else main["asleep_min"],
+            "asleep_min": main_asleep,
             "total_asleep_min": total_asleep,
             "naps_min": naps_min,
             "nap_count": len(naps),

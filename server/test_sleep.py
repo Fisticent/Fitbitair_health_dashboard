@@ -109,6 +109,48 @@ class ParseSleepSessionsTests(unittest.TestCase):
         self.assertEqual(row["nap_count"], 1)
         self.assertEqual(row["session_count"], 2)
 
+    def test_two_distinct_nights_same_day_both_counted(self):
+        # Two genuine sleep blocks ending the same day, 3h apart (> merge gap),
+        # non-overlapping, neither flagged nap: the second must not be dropped.
+        day = "2026-06-28"
+        points = [
+            _sleep_point(
+                "2026-06-27T23:00:00Z",
+                "2026-06-28T03:00:00Z",
+                240,
+                platform="HEALTH_CONNECT",
+            ),
+            _sleep_point(
+                "2026-06-28T06:00:00Z",
+                "2026-06-28T09:00:00Z",
+                180,
+                platform="HEALTH_CONNECT",
+            ),
+        ]
+        row = parse_sleep_sessions(points)[day]
+        self.assertAlmostEqual(row["asleep_min"], 240)  # longest night = score base
+        self.assertAlmostEqual(row["total_asleep_min"], 420)  # both nights summed
+        self.assertEqual(row["naps_min"], 0)
+        self.assertEqual(row["nap_count"], 0)
+        self.assertEqual(row["session_count"], 2)
+
+    def test_efficiency_capped_when_sleep_period_missing(self):
+        # API reports more minutesAsleep than the stage/interval span and no
+        # minutesInSleepPeriod: time-in-bed must clamp up, efficiency stay <= 100.
+        day = "2026-06-28"
+        points = [
+            _sleep_point(
+                "2026-06-27T23:00:00Z",  # 6h interval = 360 min span
+                "2026-06-28T05:00:00Z",
+                400,  # reported asleep exceeds the span
+                platform="HEALTH_CONNECT",
+            )
+        ]
+        row = parse_sleep_sessions(points)[day]
+        self.assertLessEqual(row["efficiency"], 100)
+        self.assertGreaterEqual(row["total_min"], row["asleep_min"])
+        self.assertAlmostEqual(row["total_min"], 400)
+
 
 class ComputeSleepScoreTests(unittest.TestCase):
     def test_hours_use_total_score_uses_main(self):

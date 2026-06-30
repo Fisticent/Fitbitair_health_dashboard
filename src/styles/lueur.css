@@ -1147,7 +1147,268 @@ body {
   transition: height 0.9s var(--lueur-ease);
 }
 
-/* Monitor grid (health) */
+/* Health monitor — compact table */
+.lueur-monitor-table-block {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.lueur-monitor-table-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.lueur-monitor-table-head .lueur-card-section-label {
+  margin-bottom: 4px;
+}
+
+.lueur-monitor-table-sub {
+  margin: 0;
+}
+
+.lueur-monitor-table-summary {
+  margin: 0;
+  font-size: 13px;
+  color: var(--lueur-text-secondary);
+  white-space: nowrap;
+  padding-top: 2px;
+}
+
+.lueur-monitor-table-summary strong {
+  font-weight: 600;
+  color: var(--lueur-text);
+}
+
+.lueur-monitor-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 -4px;
+  padding: 0 4px;
+}
+
+.lueur-monitor-table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: separate;
+  border-spacing: 0 6px;
+}
+
+.lueur-monitor-table thead th {
+  font-family: var(--lueur-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--lueur-muted);
+  text-align: left;
+  padding: 0 12px 4px;
+  white-space: nowrap;
+}
+
+.lueur-monitor-table thead th:nth-child(5) {
+  min-width: 140px;
+}
+
+.lueur-monitor-row td {
+  padding: 14px 12px;
+  vertical-align: middle;
+  background: #fafbfc;
+  border-top: 1px solid var(--lueur-border-soft);
+  border-bottom: 1px solid var(--lueur-border-soft);
+}
+
+.lueur-monitor-row td:first-child {
+  border-left: 1px solid var(--lueur-border-soft);
+  border-radius: 12px 0 0 12px;
+}
+
+.lueur-monitor-row td:last-child {
+  border-right: 1px solid var(--lueur-border-soft);
+  border-radius: 0 12px 12px 0;
+}
+
+.lueur-monitor-row--warning td {
+  background: #fff8f0;
+}
+
+.lueur-monitor-row--alert td {
+  background: #fff5f3;
+}
+
+.lueur-monitor-cell--name {
+  min-width: 108px;
+}
+
+.lueur-monitor-name-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lueur-monitor-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.lueur-monitor-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--lueur-text);
+  white-space: nowrap;
+}
+
+.lueur-monitor-cell--value {
+  white-space: nowrap;
+}
+
+.lueur-monitor-value {
+  font-size: 22px;
+  font-weight: 400;
+  letter-spacing: -0.03em;
+  color: var(--lueur-text);
+}
+
+.lueur-monitor-unit {
+  margin-left: 4px;
+  font-size: 12px;
+  color: var(--lueur-muted);
+}
+
+.lueur-monitor-cell--avg,
+.lueur-monitor-cell--delta {
+  font-size: 13px;
+  color: var(--lueur-text-secondary);
+  white-space: nowrap;
+}
+
+.lueur-monitor-cell--pos {
+  min-width: 140px;
+  width: 22%;
+}
+
+.lueur-monitor-cell--status {
+  white-space: nowrap;
+}
+
+.lueur-monitor-pos {
+  width: 100%;
+  min-width: 120px;
+}
+
+.lueur-monitor-pos-track {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: #e8ebf0;
+}
+
+.lueur-monitor-pos-norm {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-radius: 999px;
+  opacity: 0.55;
+}
+
+.lueur-monitor-pos-avg {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 14px;
+  transform: translateX(-50%);
+  background: #9aa3b2;
+  border-radius: 1px;
+  z-index: 1;
+}
+
+.lueur-monitor-pos-dot {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(21, 23, 28, 0.2);
+  z-index: 2;
+}
+
+.lueur-monitor-pos-empty {
+  color: var(--lueur-muted);
+}
+
+.lueur-monitor-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 20px;
+  padding-top: 2px;
+}
+
+.lueur-monitor-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--lueur-muted);
+}
+
+.lueur-monitor-legend-norm {
+  width: 28px;
+  height: 6px;
+  border-radius: 999px;
+  background: #c5cad3;
+}
+
+.lueur-monitor-legend-avg {
+  width: 2px;
+  height: 12px;
+  background: #9aa3b2;
+  border-radius: 1px;
+}
+
+.lueur-monitor-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #15171c;
+  border: 1.5px solid #fff;
+  box-shadow: 0 1px 3px rgba(21, 23, 28, 0.15);
+}
+
+/* Health monitor — editorial panels (legacy cards) */
+.lueur-monitor-comp {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 248px), 1fr));
+  gap: 14px;
+}
+
+.lueur-monitor-comp-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 100%;
+}
+
+.lueur-monitor-comp .lueur-body-comp-value {
+  font-size: 40px;
+}
+
+.lueur-monitor-comp .lueur-body-comp-facts .lueur-monitor-delta {
+  display: block;
+  margin-top: 2px;
+}
+
+.lueur-monitor-comp .lueur-body-comp-panel-foot {
+  min-height: 28px;
+}
+
+/* Monitor grid (health) — legacy */
 .lueur-monitor-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));

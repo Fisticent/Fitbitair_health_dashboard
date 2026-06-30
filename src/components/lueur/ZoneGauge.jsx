@@ -7,6 +7,15 @@ function segmentFlex(from, to, scaleMin, scaleMax) {
   return ((to - from) / (scaleMax - scaleMin)) * 100;
 }
 
+function segmentFlexValues(scaleMin, scaleMax, segments) {
+  let from = scaleMin;
+  return segments.map((seg) => {
+    const flex = segmentFlex(from, seg.to, scaleMin, scaleMax);
+    from = seg.to;
+    return flex;
+  });
+}
+
 /** Horizontal segmented gauge with position marker — shared by ACWR, IMC, etc. */
 export function ZoneGauge({
   value,
@@ -22,6 +31,7 @@ export function ZoneGauge({
 
   const activeIdx =
     activeIndex >= 0 ? activeIndex : segments.findIndex((seg) => value < seg.to);
+  const flexValues = segmentFlexValues(scaleMin, scaleMax, segments);
 
   return (
     <div
@@ -30,25 +40,18 @@ export function ZoneGauge({
       aria-label={ariaLabel}
     >
       <div className="lueur-zone-gauge-track">
-        {(() => {
-          let from = scaleMin;
-          return segments.map((seg, i) => {
-            const flex = segmentFlex(from, seg.to, scaleMin, scaleMax);
-            from = seg.to;
-            return (
-              <span
-                key={seg.label}
-                className="lueur-zone-gauge-seg"
-                style={{
-                  flex,
-                  background: seg.color,
-                  opacity: i === activeIdx ? 0.58 : 0.16,
-                }}
-                title={seg.label}
-              />
-            );
-          });
-        })()}
+        {segments.map((seg, i) => (
+          <span
+            key={seg.label}
+            className="lueur-zone-gauge-seg"
+            style={{
+              flex: flexValues[i],
+              background: seg.color,
+              opacity: i === activeIdx ? 0.58 : 0.16,
+            }}
+            title={seg.label}
+          />
+        ))}
         <span
           className="lueur-zone-gauge-marker"
           style={{ left: `${markerLeft(value, scaleMin, scaleMax)}%` }}
@@ -57,7 +60,7 @@ export function ZoneGauge({
       </div>
       <div
         className="lueur-zone-gauge-legend"
-        style={{ gridTemplateColumns: `repeat(${segments.length}, minmax(0, 1fr))` }}
+        style={{ gridTemplateColumns: flexValues.map((f) => `${f}fr`).join(" ") }}
       >
         {segments.map((seg, i) => (
           <span

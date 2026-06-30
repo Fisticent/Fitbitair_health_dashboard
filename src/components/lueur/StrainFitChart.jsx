@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { COLORS, formatChartDate } from "./chartUtils";
+import { useFluidChartSize } from "./useFluidChartSize";
 
 /**
  * Strain × Recovery fit map (WHOOP-style 2D zone chart).
@@ -55,6 +56,8 @@ const PAD = { t: 14, r: 14, b: 34, l: 36 };
 
 export function StrainFitChart({ history, focusDate, todayStrain, todayRecovery }) {
   const [hover, setHover] = useState(null);
+  const { ref, vw, vh, scale: s } = useFluidChartSize({ w: W, h: H }, 240);
+  const pad = { t: PAD.t * s, r: PAD.r * s, b: PAD.b * s, l: PAD.l * s };
 
   const points = useMemo(() => {
     const rows = (history || []).filter(
@@ -72,10 +75,10 @@ export function StrainFitChart({ history, focusDate, todayStrain, todayRecovery 
     return rows.slice(-7);
   }, [history, focusDate, todayStrain, todayRecovery]);
 
-  const plotW = W - PAD.l - PAD.r;
-  const plotH = H - PAD.t - PAD.b;
-  const xOf = (rec) => PAD.l + plotW * (Math.min(100, Math.max(0, rec)) / 100);
-  const yOf = (str) => PAD.t + plotH * (1 - Math.min(100, Math.max(0, str)) / 100);
+  const plotW = vw - pad.l - pad.r;
+  const plotH = vh - pad.t - pad.b;
+  const xOf = (rec) => pad.l + plotW * (Math.min(100, Math.max(0, rec)) / 100);
+  const yOf = (str) => pad.t + plotH * (1 - Math.min(100, Math.max(0, str)) / 100);
 
   if (!points.length) {
     return (
@@ -89,10 +92,11 @@ export function StrainFitChart({ history, focusDate, todayStrain, todayRecovery 
 
   return (
     <div className="lueur-fit-chart">
+      <div ref={ref} className="lueur-chart-fluid-wrap">
       <svg
+        viewBox={`0 0 ${vw} ${vh}`}
         width="100%"
-        viewBox={`0 0 ${W} ${H}`}
-        className="lueur-fit-chart-svg"
+        className="lueur-fit-chart-svg lueur-chart-fluid-svg"
         role="img"
         aria-label="Carte d'adéquation charge / récupération"
       >
@@ -116,28 +120,25 @@ export function StrainFitChart({ history, focusDate, todayStrain, todayRecovery 
           <line
             key={rec}
             x1={xOf(rec)}
-            y1={PAD.t}
+            y1={pad.t}
             x2={xOf(rec)}
-            y2={PAD.t + plotH}
+            y2={pad.t + plotH}
             stroke="#ffffff"
-            strokeWidth="1.5"
+            strokeWidth={1.5 * s}
             strokeOpacity="0.7"
           />
         ))}
 
-        {/* axes */}
-        <line x1={PAD.l} y1={PAD.t} x2={PAD.l} y2={PAD.t + plotH} stroke="#d6dae1" strokeWidth="1" />
-        <line x1={PAD.l} y1={PAD.t + plotH} x2={PAD.l + plotW} y2={PAD.t + plotH} stroke="#d6dae1" strokeWidth="1" />
+        <line x1={pad.l} y1={pad.t} x2={pad.l} y2={pad.t + plotH} stroke="#d6dae1" strokeWidth={1 * s} />
+        <line x1={pad.l} y1={pad.t + plotH} x2={pad.l + plotW} y2={pad.t + plotH} stroke="#d6dae1" strokeWidth={1 * s} />
 
-        {/* y ticks (strain) */}
-        {[0, 50, 100].map((s) => (
-          <text key={s} x={PAD.l - 6} y={yOf(s) + 3} textAnchor="end" className="lueur-fit-tick">
-            {s}
+        {[0, 50, 100].map((val) => (
+          <text key={val} x={pad.l - 6 * s} y={yOf(val) + 3 * s} textAnchor="end" className="lueur-fit-tick" fontSize={10 * s}>
+            {val}
           </text>
         ))}
-        {/* x ticks (recovery) */}
         {[0, 34, 67, 100].map((r) => (
-          <text key={r} x={xOf(r)} y={PAD.t + plotH + 14} textAnchor="middle" className="lueur-fit-tick">
+          <text key={r} x={xOf(r)} y={pad.t + plotH + 14 * s} textAnchor="middle" className="lueur-fit-tick" fontSize={10 * s}>
             {r}
           </text>
         ))}
@@ -151,11 +152,11 @@ export function StrainFitChart({ history, focusDate, todayStrain, todayRecovery 
               key={d.date}
               cx={xOf(d.recovery)}
               cy={yOf(d.strain)}
-              r={isToday ? 6 : 3.4}
+              r={isToday ? 6 * s : 3.4 * s}
               fill={isToday ? ZONE_FILL[zone] : "#5b6472"}
               fillOpacity={isToday ? 1 : 0.55}
               stroke={isToday ? "#fff" : "none"}
-              strokeWidth={isToday ? 2 : 0}
+              strokeWidth={isToday ? 2 * s : 0}
               onMouseEnter={() => setHover(i)}
               onMouseLeave={() => setHover(null)}
               style={{ cursor: "pointer" }}
@@ -168,24 +169,27 @@ export function StrainFitChart({ history, focusDate, todayStrain, todayRecovery 
           <g pointerEvents="none">
             <line
               x1={xOf(hovered.recovery)}
-              y1={PAD.t}
+              y1={pad.t}
               x2={xOf(hovered.recovery)}
-              y2={PAD.t + plotH}
+              y2={pad.t + plotH}
               stroke="#9aa0ab"
               strokeDasharray="3 3"
               strokeOpacity="0.5"
+              strokeWidth={1 * s}
             />
             <text
-              x={Math.min(xOf(hovered.recovery) + 6, W - 4)}
-              y={Math.max(yOf(hovered.strain) - 8, PAD.t + 10)}
-              textAnchor={xOf(hovered.recovery) > W - 70 ? "end" : "start"}
+              x={Math.min(xOf(hovered.recovery) + 6 * s, vw - 4 * s)}
+              y={Math.max(yOf(hovered.strain) - 8 * s, pad.t + 10 * s)}
+              textAnchor={xOf(hovered.recovery) > vw - 70 * s ? "end" : "start"}
               className="lueur-fit-tip"
+              fontSize={10 * s}
             >
               {formatChartDate(hovered.date)} · charge {Math.round(hovered.strain)} · récup {Math.round(hovered.recovery)}
             </text>
           </g>
         )}
       </svg>
+      </div>
 
       <div className="lueur-fit-axis-labels">
         <span>← moins récupéré</span>

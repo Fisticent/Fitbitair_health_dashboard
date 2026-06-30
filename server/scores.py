@@ -122,6 +122,12 @@ def compute_recovery(
     # proxy, and HRV is z-scored on ln(RMSSD) (lnRMSSD) since it is log-normally
     # distributed — one consistent treatment of HRV across every screen.
     weighted: list[tuple[float, float]] = []
+    z_hrv_impact: float | None = None
+    z_rhr_impact: float | None = None
+    z_sleep_impact: float | None = None
+    z_resp_impact: float | None = None
+    z_temp_impact: float | None = None
+
     if hrv_val and hrv_val > 0 and hrv_hist:
         z_hrv = _robust_z(
             math.log(hrv_val),
@@ -130,17 +136,21 @@ def compute_recovery(
             min_n=3,
         )
         if z_hrv is not None:
+            z_hrv_impact = z_hrv
             weighted.append((0.40, z_hrv))
     if rhr_val and rhr_hist:
         z_rhr = _robust_z(rhr_val, rhr_hist, floor=2.0, min_n=3)
         if z_rhr is not None:
-            weighted.append((0.25, -z_rhr))  # lower resting HR is better
+            z_rhr_impact = -z_rhr  # lower resting HR is better
+            weighted.append((0.25, z_rhr_impact))
     if sleep_val:
-        weighted.append((0.25, (sleep_val - need) / (sleep_sigma or 1.0)))
+        z_sleep_impact = (sleep_val - need) / (sleep_sigma or 1.0)
+        weighted.append((0.25, z_sleep_impact))
     if resp_val and resp_hist:
         z_resp = _robust_z(resp_val, resp_hist, floor=0.5, min_n=3)
         if z_resp is not None:
-            weighted.append((0.10, -z_resp))  # lower respiratory rate is better
+            z_resp_impact = -z_resp  # lower respiratory rate is better
+            weighted.append((0.10, z_resp_impact))
     if temp_dev is not None:
         temp_hist = [
             skin_temp[d]["deviation"]
@@ -149,7 +159,8 @@ def compute_recovery(
         ]
         z_temp = _robust_z(temp_dev, temp_hist, floor=0.15, min_n=3)
         if z_temp is not None:
-            weighted.append((0.10, -z_temp))  # warmer than baseline = worse recovery
+            z_temp_impact = -z_temp  # warmer than baseline = worse recovery
+            weighted.append((0.10, z_temp_impact))
 
     if weighted:
         total_w = sum(w for w, _ in weighted)
@@ -158,17 +169,41 @@ def compute_recovery(
         z_composite = 0.0
     pct = _pct_from_z(z_composite)
 
+    def _round_z(z: float | None) -> float | None:
+        return round(z, 2) if z is not None else None
+
     return {
         "date": day,
         "score": pct,
         "zone": recovery_zone(pct),
         "color": recovery_color(recovery_zone(pct)),
         "components": {
-            "hrv": {"value": round(hrv_val) if hrv_val is not None else None, "unit": "ms"},
-            "rhr": {"value": round(rhr_val) if rhr_val is not None else None, "unit": "bpm"},
-            "sleep_hours": {"value": round(sleep_val, 1), "need": round(need, 1)},
-            "respiratory": {"value": round(resp_val) if resp_val is not None else None, "unit": "/min"},
-            "skin_temp": {"value": temp_dev, "unit": "°C", "nightly": temp_today.get("nightly")},
+            "hrv": {
+                "value": round(hrv_val) if hrv_val is not None else None,
+                "unit": "ms",
+                "z": _round_z(z_hrv_impact),
+            },
+            "rhr": {
+                "value": round(rhr_val) if rhr_val is not None else None,
+                "unit": "bpm",
+                "z": _round_z(z_rhr_impact),
+            },
+            "sleep_hours": {
+                "value": round(sleep_val, 1),
+                "need": round(need, 1),
+                "z": _round_z(z_sleep_impact),
+            },
+            "respiratory": {
+                "value": round(resp_val) if resp_val is not None else None,
+                "unit": "/min",
+                "z": _round_z(z_resp_impact),
+            },
+            "skin_temp": {
+                "value": temp_dev,
+                "unit": "°C",
+                "nightly": temp_today.get("nightly"),
+                "z": _round_z(z_temp_impact),
+            },
         },
     }
 

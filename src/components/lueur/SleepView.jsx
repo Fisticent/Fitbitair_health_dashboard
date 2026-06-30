@@ -3,6 +3,7 @@ import { LueurCard } from "./LueurCard";
 import { ProgressRing } from "./ProgressRing";
 import { HypnogramFull, StageBreakdown } from "./Hypnogram";
 import { LargeSparkChart } from "./MiniSparkChart";
+import { SleepDebtChart } from "./AdvancedCharts";
 import { COLORS, formatDateLong, formatSleepDuration, formatSleepNapSubtitle, formatMinutes, formatClockTime, scoreStatusLabel } from "./chartUtils";
 import { scoreZone } from "../../utils/metricStatus";
 import { formatMetricValue } from "../../utils/formatMetric";
@@ -51,6 +52,16 @@ export function SleepView({ data, onBack, history }) {
     : recovery?.components?.hrv?.value;
 
   const sleepDebt7 = cumulativeSleepDebt(history, 7);
+
+  const chartNeed = sleep?.need ?? 7.5;
+  const sleepWeekSeries = history14
+    .slice(-7)
+    .filter((d) => d.sleep_hours != null && d.sleep_hours > 0)
+    .map((d) => ({
+      date: d.date,
+      value: d.sleep_hours,
+      need: d.sleep_need ?? chartNeed,
+    }));
 
   return (
     <div>
@@ -149,6 +160,20 @@ export function SleepView({ data, onBack, history }) {
         </div>
       </LueurCard>
 
+      {sleepWeekSeries.length >= 2 && (
+        <LueurCard style={{ marginTop: 20 }}>
+          <LueurMetricLabel id="sleep_debt_7d" as="p" className="lueur-label" style={{ marginBottom: 8 }}>
+            Durée vs besoin · 7 jours
+          </LueurMetricLabel>
+          <p className="lueur-mono-meta" style={{ marginBottom: 12 }}>
+            Barres bleues = dormi · zone corail = déficit vs besoin
+          </p>
+          <div className="lueur-card-chart-center">
+            <SleepDebtChart series={sleepWeekSeries} defaultNeed={chartNeed} />
+          </div>
+        </LueurCard>
+      )}
+
       <LueurCard hero style={{ marginTop: 20 }}>
         <LueurMetricLabel id="hypnogram" as="p" className="lueur-label" style={{ marginBottom: 18 }}>
           Hypnogramme
@@ -178,7 +203,7 @@ export function SleepView({ data, onBack, history }) {
               <p className="lueur-mono-meta" style={{ marginBottom: 14 }}>
                 Agrégats journaliers (pas la FC mesurée pendant le sommeil).
               </p>
-              <LargeSparkChart values={hrHistory} color={COLORS.BLUE} gradient="blue" />
+              <LargeSparkChart values={hrHistory} color={COLORS.BLUE} gradient="blue" valueUnit="bpm" enriched />
             </LueurCard>
           )}
           {hrvCount > 0 && (
@@ -195,7 +220,7 @@ export function SleepView({ data, onBack, history }) {
               <p className="lueur-mono-meta" style={{ marginBottom: 14 }}>
                 Agrégats journaliers · tendance dans Analyses.
               </p>
-              <LargeSparkChart values={hrvHistory} color={COLORS.TEAL} gradient="teal" />
+              <LargeSparkChart values={hrvHistory} color={COLORS.TEAL} gradient="teal" valueUnit="ms" enriched />
             </LueurCard>
           )}
         </div>

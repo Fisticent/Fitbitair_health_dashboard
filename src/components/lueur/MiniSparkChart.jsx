@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { lineChart, lineChartPoints, formatChartDate } from "./chartUtils";
+import { EnrichedSparkChart } from "./EnrichedSparkChart";
+import { useFluidChartSize } from "./useFluidChartSize";
 
 const GRADIENTS = {
   blue: "gB",
@@ -23,32 +25,51 @@ export function MiniSparkChart({
   valueUnit = "",
   formatValue = defaultFormatValue,
   formatLabel = formatChartDate,
+  enriched = false,
 }) {
+  const { ref, vw: W, vh: H, scale: s } = useFluidChartSize({ w: width, h: height }, 140);
+
+  if (enriched) {
+    return (
+      <EnrichedSparkChart
+        values={values}
+        points={points}
+        width={width}
+        height={height}
+        color={color}
+        gradient={gradient}
+        valueUnit={valueUnit}
+        formatValue={formatValue}
+        formatLabel={formatLabel}
+      />
+    );
+  }
+
+  const p = pad * s;
   const series = points ?? values.map((v) => ({ value: v }));
-  const chartValues = series.map((p) => p.value);
-  const { line, area } = lineChart(chartValues, width, height, pad);
-  const coords = lineChartPoints(chartValues, width, height, pad);
+  const chartValues = series.map((item) => item.value);
+  const { line, area } = lineChart(chartValues, W, H, p);
+  const coords = lineChartPoints(chartValues, W, H, p);
   const [hover, setHover] = useState(null);
-  const interactive = series.some((p) => p.date != null);
+  const interactive = series.some((item) => item.date != null);
 
   if (!line) return null;
 
   const gradId = GRADIENTS[gradient] || "gB";
-  const bandW = coords.length > 1 ? (width - 2 * pad) / (coords.length - 1) : width;
+  const bandW = coords.length > 1 ? (W - 2 * p) / (coords.length - 1) : W;
   const active = hover != null ? coords[hover] : null;
   const activePoint = hover != null ? series[hover] : null;
   const unitSuffix = valueUnit ? ` ${valueUnit}` : "";
 
   return (
     <div
+      ref={ref}
       className={`lueur-spark-chart${interactive ? " lueur-spark-chart--interactive" : ""}`}
+      style={{ maxWidth: width, width: "100%" }}
       onMouseLeave={() => setHover(null)}
     >
       {interactive && activePoint && active && (
-        <div
-          className="lueur-spark-tooltip"
-          style={{ left: `${(active.x / width) * 100}%` }}
-        >
+        <div className="lueur-spark-tooltip" style={{ left: `${(active.x / W) * 100}%` }}>
           {activePoint.date && (
             <span className="lueur-spark-tooltip-date">{formatLabel(activePoint.date)}</span>
           )}
@@ -58,13 +79,13 @@ export function MiniSparkChart({
           </span>
         </div>
       )}
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ width: "100%", height: "auto" }}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" className="lueur-spark-chart-svg" aria-hidden="true">
         <path d={area} fill={`url(#${gradId})`} />
         <path
           d={line}
           fill="none"
           stroke={color}
-          strokeWidth="2.4"
+          strokeWidth={2.4 * s}
           strokeLinejoin="round"
           strokeLinecap="round"
         />
@@ -75,7 +96,7 @@ export function MiniSparkChart({
               x={pt.x - bandW / 2}
               y={0}
               width={bandW}
-              height={height}
+              height={H}
               fill="transparent"
               onMouseEnter={() => setHover(i)}
             />
@@ -84,21 +105,21 @@ export function MiniSparkChart({
           <>
             <line
               x1={active.x}
-              y1={pad}
+              y1={p}
               x2={active.x}
-              y2={height - pad}
+              y2={H - p}
               stroke={color}
-              strokeWidth="1"
+              strokeWidth={1 * s}
               strokeOpacity="0.35"
               strokeDasharray="3 3"
             />
             <circle
               cx={active.x}
               cy={active.y}
-              r="4.5"
+              r={4.5 * s}
               fill={color}
               stroke="#fff"
-              strokeWidth="2"
+              strokeWidth={2 * s}
             />
           </>
         )}
@@ -114,24 +135,44 @@ export function LargeSparkChart({
   pad = 16,
   color = "#5b8def",
   gradient = "blue",
+  valueUnit = "",
+  enriched = false,
 }) {
-  const { line, area } = lineChart(values, width, height, pad);
+  const { ref, vw: W, vh: H, scale: s } = useFluidChartSize({ w: width, h: height }, 280);
+
+  if (enriched) {
+    return (
+      <EnrichedSparkChart
+        values={values}
+        width={width}
+        height={height}
+        color={color}
+        gradient={gradient}
+        valueUnit={valueUnit}
+      />
+    );
+  }
+
+  const p = pad * s;
+  const { line, area } = lineChart(values, W, H, p);
   if (!line) return null;
 
   const gradId = GRADIENTS[gradient] || "gB";
 
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ width: "100%", height: "auto" }}>
-      <path d={area} fill={`url(#${gradId})`} />
-      <path
-        d={line}
-        fill="none"
-        stroke={color}
-        strokeWidth="2.5"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-    </svg>
+    <div ref={ref} className="lueur-chart-fluid-wrap" style={{ maxWidth: width, width: "100%" }}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" className="lueur-spark-chart-svg" aria-hidden="true">
+        <path d={area} fill={`url(#${gradId})`} />
+        <path
+          d={line}
+          fill="none"
+          stroke={color}
+          strokeWidth={2.5 * s}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+      </svg>
+    </div>
   );
 }
 

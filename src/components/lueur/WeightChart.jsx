@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react";
-import { COLORS, formatChartDate, pickVisibleXLabels, xLabelStyle } from "./chartUtils";
+import { COLORS, formatChartDate, pickVisibleXLabels, xLabelStyle, smoothLinePath, smoothAreaPath } from "./chartUtils";
 import { seriesBaseline } from "../../utils/comparisons";
+import { useFluidChartSize } from "./useFluidChartSize";
 
 const COLOR = COLORS.BLUE;
 const GRAD_ID = "lueurWeightGrad";
 const CHART_W = 520;
-const CHART_H = 168;
+const CHART_H = 204;
+const INDEX_X_MAX_POINTS = 12;
 
 function niceTicks(min, max, count = 4) {
   const span = max - min || 1;
@@ -31,12 +33,13 @@ export function LueurWeightChart({
   width = CHART_W,
 }) {
   const [hover, setHover] = useState(null);
+  const { ref, vw, vh, scale: s } = useFluidChartSize({ w: width, h: height }, 280);
 
   const layout = useMemo(() => {
-    const pad = { t: 12, r: 16, b: 8, l: 44 };
-    const xInset = 20;
-    const innerW = width - pad.l - pad.r;
-    const innerH = height - pad.t - pad.b;
+    const pad = { t: 16 * s, r: 16 * s, b: 10 * s, l: 48 * s };
+    const xInset = 20 * s;
+    const innerW = vw - pad.l - pad.r;
+    const innerH = vh - pad.t - pad.b;
 
     const rows = series
       .filter((d) => d.value != null && d.date)
@@ -62,24 +65,27 @@ export function LueurWeightChart({
     const tSpan = tMax - tMin || 1;
 
     const plotW = innerW - xInset * 2;
-    const xOf = (t) => pad.l + xInset + (plotW * (t - tMin)) / tSpan;
+    const indexScale = rows.length <= INDEX_X_MAX_POINTS;
+    const xOf = (r, i) => {
+      if (indexScale) {
+        return pad.l + xInset + (plotW * i) / Math.max(rows.length - 1, 1);
+      }
+      return pad.l + xInset + (plotW * (r.t - tMin)) / tSpan;
+    };
     const yOf = (v) => pad.t + innerH * (1 - (v - yMin) / (yMax - yMin || 1));
 
     const coords = rows.map((r, i) => ({
       ...r,
       i,
-      x: xOf(r.t),
+      x: xOf(r, i),
       y: yOf(r.value),
       isActive: activeWeightDate === r.date,
     }));
 
-    let line = `M${coords[0].x.toFixed(1)} ${coords[0].y.toFixed(1)}`;
-    for (let i = 1; i < coords.length; i++) {
-      line += ` L${coords[i].x.toFixed(1)} ${coords[i].y.toFixed(1)}`;
-    }
-
+    const linePts = coords.map((c) => ({ x: c.x, y: c.y }));
+    const line = smoothLinePath(linePts);
     const baseY = pad.t + innerH;
-    const area = `${line} L${coords[coords.length - 1].x.toFixed(1)} ${baseY} L${coords[0].x.toFixed(1)} ${baseY} Z`;
+    const area = smoothAreaPath(linePts, baseY);
 
     const avg =
       seriesBaseline(
@@ -88,26 +94,26 @@ export function LueurWeightChart({
       ) ?? null;
     const avgY = avg != null ? yOf(avg) : null;
 
-    return { pad, innerH, innerW, coords, line, area, yTicks, yOf, avg, avgY, baseY };
-  }, [series, activeWeightDate, width, height]);
+    return { pad, innerH, innerW, coords, line, area, yTicks, yOf, avg, avgY, baseY, bleed: { t: 8 * s, b: 10 * s, l: 6 * s, r: 4 * s } };
+  }, [series, activeWeightDate, vw, vh, s]);
 
   const xLabels = useMemo(
-    () => (layout ? pickVisibleXLabels(layout.coords, width) : []),
-    [layout, width],
+    () => (layout ? pickVisibleXLabels(layout.coords, vw) : []),
+    [layout, vw],
   );
 
   if (!layout) return null;
 
-  const { pad, coords, line, area, yTicks, yOf, avg, avgY, baseY } = layout;
+  const { pad, coords, line, area, yTicks, yOf, avg, avgY, baseY, bleed } = layout;
   const active = hover != null ? coords[hover] : null;
   const hitW = layout.innerW / Math.max(coords.length - 1, 1);
 
   return (
     <div className="lueur-weight-chart-panel">
       <div
+        ref={ref}
         className="lueur-weight-chart"
         onMouseLeave={() => setHover(null)}
-        style={{ "--chart-plot-h": `${height}px` }}
       >
         {avg != null && (
           <div className="lueur-weight-chart-avg-pill">Moy. {formatKg(avg)} kg</div>
@@ -116,7 +122,7 @@ export function LueurWeightChart({
         {active && (
           <div
             className="lueur-spark-tooltip"
-            style={{ left: `${(active.x / width) * 100}%` }}
+            style={{ left: `${(active.x / vw) * 100}%` }}
           >
             <span className="lueur-spark-tooltip-date">{formatChartDate(active.date)}</span>
             <span className="lueur-spark-tooltip-value">{formatKg(active.value)} kg</span>
@@ -127,10 +133,9 @@ export function LueurWeightChart({
         )}
 
         <svg
-          width={width}
-          height={height}
-          viewBox={`0 0 ${width} ${height}`}
-          className="lueur-weight-chart-svg"
+          viewBox={`${-bleed.l} ${-bleed.t} ${vw + bleed.l + bleed.r} ${vh + bleed.t + bleed.b}`}
+          width="100%"
+          className="lueur-weight-chart-svg lueur-chart-fluid-svg"
           aria-hidden="true"
         >
           <defs>
@@ -143,9 +148,9 @@ export function LueurWeightChart({
           <rect
             x={pad.l}
             y={pad.t}
-            width={width - pad.l - pad.r}
+            width={vw - pad.l - pad.r}
             height={baseY - pad.t}
-            rx="10"
+            rx={10 * s}
             fill="#f8f9fb"
           />
 
@@ -154,17 +159,18 @@ export function LueurWeightChart({
             return (
               <g key={tick}>
                 <line
-                  x1={pad.l + 4}
+                  x1={pad.l + 4 * s}
                   y1={y}
-                  x2={width - pad.r}
+                  x2={vw - pad.r}
                   y2={y}
                   stroke="#e8eaee"
-                  strokeWidth="1"
+                  strokeWidth={1 * s}
                 />
                 <text
-                  x={pad.l - 8}
-                  y={y + 4}
+                  x={pad.l - 10 * s}
+                  y={y}
                   textAnchor="end"
+                  dominantBaseline="middle"
                   className="lueur-weight-chart-axis"
                 >
                   {formatKg(tick)}
@@ -175,12 +181,12 @@ export function LueurWeightChart({
 
           {avg != null && avgY != null && (
             <line
-              x1={pad.l + 4}
+              x1={pad.l + 4 * s}
               y1={avgY}
-              x2={width - pad.r}
+              x2={vw - pad.r}
               y2={avgY}
               stroke={COLOR}
-              strokeWidth="1"
+              strokeWidth={1 * s}
               strokeOpacity="0.4"
               strokeDasharray="5 5"
             />
@@ -191,7 +197,7 @@ export function LueurWeightChart({
             d={line}
             fill="none"
             stroke={COLOR}
-            strokeWidth="2.4"
+            strokeWidth={2.4 * s}
             strokeLinejoin="round"
             strokeLinecap="round"
           />
@@ -213,10 +219,10 @@ export function LueurWeightChart({
               key={pt.date}
               cx={pt.x}
               cy={pt.y}
-              r={pt.isActive ? 5.5 : hover === pt.i ? 5 : 4}
+              r={pt.isActive ? 5.5 * s : hover === pt.i ? 5 * s : 4 * s}
               fill={pt.isActive ? COLORS.TEAL : COLOR}
               stroke="#fff"
-              strokeWidth="2"
+              strokeWidth={2 * s}
             />
           ))}
 
@@ -227,7 +233,7 @@ export function LueurWeightChart({
               x2={active.x}
               y2={baseY}
               stroke={COLOR}
-              strokeWidth="1"
+              strokeWidth={1 * s}
               strokeOpacity="0.28"
               strokeDasharray="3 3"
             />
@@ -239,7 +245,7 @@ export function LueurWeightChart({
             <span
               key={pt.date}
               className="lueur-weight-chart-xlabel"
-              style={xLabelStyle(pt, width)}
+              style={xLabelStyle(pt, vw)}
             >
               {formatChartDate(pt.date)}
             </span>

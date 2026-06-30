@@ -65,15 +65,12 @@ export function lineChart(vals, w, h, pad) {
     return pad + (h - 2 * pad) * (1 - (val - mn) / rg);
   };
 
-  let d = `M${X(0).toFixed(1)} ${Y(vals[0]).toFixed(1)}`;
-  for (let i = 1; i < n; i++) {
-    d += ` L${X(i).toFixed(1)} ${Y(vals[i]).toFixed(1)}`;
-  }
-  const a = `${d} L${X(n - 1).toFixed(1)} ${(h - pad).toFixed(1)} L${X(0).toFixed(1)} ${(h - pad).toFixed(1)} Z`;
-  return { line: d, area: a };
+  const pts = vals.map((v, i) => ({ x: X(i), y: Y(v) }));
+  const line = smoothLinePath(pts);
+  const area = smoothAreaPath(pts, h - pad);
+  return { line, area };
 }
 
-/** Coordinates for each point (for hover tooltips). */
 export function lineChartPoints(vals, w, h, pad) {
   if (!vals?.length) return [];
   const filtered = vals.filter((v) => v != null && !Number.isNaN(v));
@@ -202,6 +199,25 @@ export function formatClockTime(iso) {
   } catch {
     return null;
   }
+}
+
+export function pctFromZ(z) {
+  if (z == null || Number.isNaN(z)) return null;
+  const erf = (x) => {
+    const sign = x < 0 ? -1 : 1;
+    const ax = Math.abs(x);
+    const t = 1 / (1 + 0.3275911 * ax);
+    const y =
+      1 -
+      (((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t *
+        Math.exp(-ax * ax));
+    return sign * y;
+  };
+  return Math.max(0, Math.min(100, Math.round(100 * 0.5 * (1 + erf(z / Math.sqrt(2))))));
+}
+
+export function recoveryContributorStatus(z) {
+  return scoreStatusLabel(pctFromZ(z));
 }
 
 export function scoreStatusLabel(pct) {
@@ -380,4 +396,63 @@ export function stagesToHypnoSegments(stages, width, laneY, barH) {
     x += m * sc;
     return rect;
   });
+}
+
+/** Mean / stdev / min / max for numeric series (null-safe). */
+export function seriesStats(values) {
+  const nums = (values ?? []).filter((v) => v != null && !Number.isNaN(Number(v))).map(Number);
+  if (!nums.length) return null;
+  const avg = nums.reduce((a, b) => a + b, 0) / nums.length;
+  const sd =
+    nums.length > 1
+      ? Math.sqrt(nums.reduce((a, b) => a + (b - avg) ** 2, 0) / nums.length)
+      : 0;
+  return {
+    avg,
+    sd: sd || 0,
+    min: Math.min(...nums),
+    max: Math.max(...nums),
+    minIndex: nums.indexOf(Math.min(...nums)),
+    maxIndex: nums.indexOf(Math.max(...nums)),
+  };
+}
+
+/** Catmull-Rom style smooth SVG path through {x,y} points. */
+export function smoothLinePath(points) {
+  if (!points?.length) return "";
+  if (points.length < 2) {
+    return `M${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
+  }
+  let d = `M${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i - 1] || points[i];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2] || p2;
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C${c1x.toFixed(1)} ${c1y.toFixed(1)} ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+  }
+  return d;
+}
+
+/** Closed SVG area under a smooth curve down to baseY. */
+export function smoothAreaPath(points, baseY) {
+  if (!points?.length) return "";
+  const line =
+    points.length >= 2
+      ? smoothLinePath(points)
+      : `M${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
+  const last = points[points.length - 1];
+  const first = points[0];
+  return `${line} L${last.x.toFixed(1)} ${baseY} L${first.x.toFixed(1)} ${baseY} Z`;
+}
+
+/** Single-letter weekday label (L M M J V S D). */
+export function weekdayLetter(iso) {
+  if (!iso) return "";
+  const labels = ["D", "L", "M", "M", "J", "V", "S"];
+  return labels[new Date(`${iso}T12:00:00`).getDay()];
 }

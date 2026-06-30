@@ -4,6 +4,7 @@ import {
   stagesToHypnoSegments,
   timelineToHypnoRects,
 } from "./chartUtils";
+import { useFluidChartSize } from "./useFluidChartSize";
 
 const STAGE_LABELS = [
   { key: "awake_min", label: "Éveil", color: COLORS.GREY },
@@ -26,7 +27,10 @@ function resolveRects(timeline, stages, config) {
 }
 
 export function HypnogramMini({ timeline, stages, width = MINI.width }) {
-  const config = { ...MINI, width };
+  const { ref, vw, vh, scale: s } = useFluidChartSize({ w: width, h: MINI.height }, 180);
+  const laneY = MINI.laneY.map((y) => y * s);
+  const barH = MINI.barH * s;
+  const config = { width: vw, height: vh, laneY, barH };
   const { rects } = resolveRects(timeline, stages, config);
 
   if (!rects.length) {
@@ -34,16 +38,15 @@ export function HypnogramMini({ timeline, stages, width = MINI.width }) {
   }
 
   return (
-    <div className="lueur-hypno-mini">
+    <div ref={ref} className="lueur-hypno-mini">
       <svg
-        width={width}
-        height={MINI.height}
-        viewBox={`0 0 ${width} ${MINI.height}`}
-        className="lueur-hypno-svg"
+        viewBox={`0 0 ${vw} ${vh}`}
+        width="100%"
+        className="lueur-hypno-svg lueur-chart-fluid-svg"
         aria-hidden
       >
         {rects.map((r) => (
-          <rect key={r.key ?? `${r.x}-${r.y}`} x={r.x} y={r.y} width={r.w} height={r.h} rx="3" fill={r.color} />
+          <rect key={r.key ?? `${r.x}-${r.y}`} x={r.x} y={r.y} width={r.w} height={r.h} rx={3 * s} fill={r.color} />
         ))}
       </svg>
       <HypnogramLegend />
@@ -52,7 +55,10 @@ export function HypnogramMini({ timeline, stages, width = MINI.width }) {
 }
 
 export function HypnogramFull({ timeline, stages, bedtime, wakeup, width = FULL.width }) {
-  const config = { ...FULL, width };
+  const { ref, vw, vh, scale: s } = useFluidChartSize({ w: width, h: FULL.height }, 320);
+  const laneY = FULL.laneY.map((y) => y * s);
+  const barH = FULL.barH * s;
+  const config = { width: vw, height: vh, laneY, barH };
   const { rects, fromTimeline } = resolveRects(timeline, stages, config);
   const startLabel = formatClockTime(bedtime) || (fromTimeline ? formatClockTime(timeline?.[0]?.start) : null);
   const endLabel = formatClockTime(wakeup) || (fromTimeline ? formatClockTime(timeline?.[timeline.length - 1]?.end) : null);
@@ -60,21 +66,20 @@ export function HypnogramFull({ timeline, stages, bedtime, wakeup, width = FULL.
   return (
     <div className="lueur-hypno-full">
       <div className="lueur-hypno-chart">
-        <div className="lueur-hypno-lanes" style={{ height: FULL.height }}>
-          {STAGE_LABELS.map((s) => (
-            <span key={s.key}>{s.label}</span>
+        <div className="lueur-hypno-lanes" style={{ height: vh }}>
+          {STAGE_LABELS.map((item) => (
+            <span key={item.key}>{item.label}</span>
           ))}
         </div>
-        <div className="lueur-hypno-plot">
+        <div ref={ref} className="lueur-hypno-plot lueur-chart-fluid-wrap">
           <svg
-            width={width}
-            height={FULL.height}
-            viewBox={`0 0 ${width} ${FULL.height}`}
-            className="lueur-hypno-svg"
+            viewBox={`0 0 ${vw} ${vh}`}
+            width="100%"
+            className="lueur-hypno-svg lueur-chart-fluid-svg"
             aria-hidden
           >
             {rects.map((r) => (
-              <rect key={r.key ?? `${r.x}-${r.y}`} x={r.x} y={r.y} width={r.w} height={r.h} rx="5" fill={r.color} />
+              <rect key={r.key ?? `${r.x}-${r.y}`} x={r.x} y={r.y} width={r.w} height={r.h} rx={5 * s} fill={r.color} />
             ))}
           </svg>
           {(startLabel || endLabel) && (

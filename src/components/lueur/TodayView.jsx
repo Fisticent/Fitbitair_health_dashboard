@@ -2,6 +2,7 @@ import { LueurCard } from "./LueurCard";
 import { ProgressRing, MiniRing } from "./ProgressRing";
 import { HypnogramMini } from "./Hypnogram";
 import { MiniSparkChart } from "./MiniSparkChart";
+import { StepsWeekChart, SkinTempDivergingChart, Spo2ThresholdChart, spo2LowNightCount, StressZonesChart } from "./AdvancedCharts";
 import {
   COLORS,
   zoneColor,
@@ -91,7 +92,16 @@ function SleepMetaGrid({ sleep, sleepDebt7 }) {
   );
 }
 
-function VitalSparkFoot({ points, values, color, gradient, caption, valueUnit = "" }) {
+function VitalSparkFoot({
+  points,
+  values,
+  color,
+  gradient,
+  caption,
+  valueUnit = "",
+  formatValue,
+  enriched = true,
+}) {
   const count = points?.length ?? values?.filter((v) => v != null).length ?? 0;
   const hasChart = count >= 2;
 
@@ -103,9 +113,11 @@ function VitalSparkFoot({ points, values, color, gradient, caption, valueUnit = 
           values={values}
           color={color}
           gradient={gradient}
-          width={280}
-          height={70}
+          width={320}
+          height={enriched ? 124 : 70}
           valueUnit={valueUnit}
+          formatValue={formatValue}
+          enriched={enriched}
         />
       ) : (
         <div className="lueur-vital-spark-ph" aria-hidden="true" />
@@ -184,13 +196,25 @@ export function TodayView({
 
   // Skin temperature: API sends an object {nightly, baseline, deviation}.
   const skinTempDev = vitals?.skin_temp?.deviation ?? null;
-  const skinTempHistory = history?.map((d) => d.skin_temp_dev) ?? [];
+  const skinTempHistory = (history ?? [])
+    .map((d) => d.skin_temp_dev)
+    .filter((v) => v != null);
   const respMonitor = health_monitor?.find((m) => m.name === "Respiration");
   const sleepDebt7 = cumulativeSleepDebt(history, 7);
   const spo2History = (history ?? [])
     .slice(-14)
     .map((d) => ({ date: d.date, value: d.spo2 }))
     .filter((p) => p.value != null);
+  const spo2LowN = spo2LowNightCount(spo2History);
+  const stressHistory = (history ?? [])
+    .slice(-14)
+    .filter((d) => d.stress != null)
+    .map((d) => ({ date: d.date, value: d.stress }));
+
+  const stepsWeekSeries = (history ?? [])
+    .slice(-7)
+    .filter((d) => d.steps != null)
+    .map((d) => ({ date: d.date, value: d.steps }));
 
   const recoveryStatus = scoreStatusLabel(recoveryScore);
   // Ring + pill must follow the recovery zone, not a hardcoded green.
@@ -355,6 +379,11 @@ export function TodayView({
               </div>
             </div>
           </div>
+          {stepsWeekSeries.length >= 2 && (
+            <div className="lueur-activity-week-chart">
+              <StepsWeekChart series={stepsWeekSeries} goal={stepsGoal ?? 10000} />
+            </div>
+          )}
         </LueurCard>
 
         <VitalMetricCard
@@ -368,6 +397,8 @@ export function TodayView({
               values={hrHistory}
               color={COLORS.BLUE}
               gradient="blue"
+              valueUnit="bpm"
+              formatValue={(v) => formatMetricValue("FC repos", v)}
               caption={
                 hrHistory.filter((v) => v != null).length > 0
                   ? `tendance ${hrHistory.length} j`
@@ -388,7 +419,13 @@ export function TodayView({
               values={hrvHistory}
               color={COLORS.TEAL}
               gradient="teal"
-              caption={hrvHistory.filter((v) => v != null).length > 0 ? "moy. 7 j" : "—"}
+              valueUnit="ms"
+              formatValue={(v) => formatMetricValue("HRV", v)}
+              caption={
+                hrvHistory.filter((v) => v != null).length > 0
+                  ? `tendance ${hrvHistory.length} j`
+                  : "—"
+              }
             />
           }
         />
@@ -409,6 +446,8 @@ export function TodayView({
                 values={respHistory}
                 color={COLORS.BLUE}
                 gradient="blue"
+                valueUnit="/min"
+                formatValue={(v) => formatMetricValue("Respiration", v)}
                 caption={
                   respHistory.filter((v) => v != null).length > 0
                     ? `tendance ${respHistory.length} j`
@@ -427,16 +466,18 @@ export function TodayView({
             unit="°C"
             meta="écart vs ta baseline nocturne"
             foot={
-              <VitalSparkFoot
-                values={skinTempHistory}
-                color={COLORS.CORAL}
-                gradient="coral"
-                caption={
-                  skinTempHistory.filter((v) => v != null).length > 0
+              <div className="lueur-vital-card-foot">
+                {skinTempHistory.length > 0 ? (
+                  <SkinTempDivergingChart series={skinTempHistory} />
+                ) : (
+                  <div className="lueur-vital-spark-ph" aria-hidden="true" />
+                )}
+                <div className="lueur-mono-meta">
+                  {skinTempHistory.length > 0
                     ? `tendance ${skinTempHistory.length} j`
-                    : "—"
-                }
-              />
+                    : "—"}
+                </div>
+              </div>
             }
           />
         )}
@@ -474,23 +515,27 @@ export function TodayView({
             }
             foot={
               <div className="lueur-vital-card-foot">
-                {stress.score != null && (
-                  <div
-                    className="lueur-stress-bar"
-                    role="img"
-                    aria-label={`Niveau de stress ${stress.score} sur 100`}
-                    style={stressCalibrating ? { opacity: 0.5 } : undefined}
-                  >
-                    <div className="lueur-stress-bar-track">
-                      <span className="lueur-stress-bar-seg lueur-stress-bar-seg--low" />
-                      <span className="lueur-stress-bar-seg lueur-stress-bar-seg--mid" />
-                      <span className="lueur-stress-bar-seg lueur-stress-bar-seg--high" />
-                      <span
-                        className="lueur-stress-bar-marker"
-                        style={{ left: `${Math.min(100, Math.max(0, stress.score))}%` }}
-                      />
+                {stressHistory.length >= 2 && !stressCalibrating ? (
+                  <StressZonesChart series={stressHistory} compact />
+                ) : (
+                  stress.score != null && (
+                    <div
+                      className="lueur-stress-bar"
+                      role="img"
+                      aria-label={`Niveau de stress ${stress.score} sur 100`}
+                      style={stressCalibrating ? { opacity: 0.5 } : undefined}
+                    >
+                      <div className="lueur-stress-bar-track">
+                        <span className="lueur-stress-bar-seg lueur-stress-bar-seg--low" />
+                        <span className="lueur-stress-bar-seg lueur-stress-bar-seg--mid" />
+                        <span className="lueur-stress-bar-seg lueur-stress-bar-seg--high" />
+                        <span
+                          className="lueur-stress-bar-marker"
+                          style={{ left: `${Math.min(100, Math.max(0, stress.score))}%` }}
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )
                 )}
                 <div className="lueur-mono-meta">
                   {stress.score != null
@@ -522,14 +567,30 @@ export function TodayView({
             unit="%"
             meta="moyenne nocturne"
             foot={
-              <VitalSparkFoot
-                points={spo2History}
-                color={COLORS.BLUE}
-                gradient="blue"
-                valueUnit="%"
-                caption={
-                  spo2History.length > 0 ? (
+              <div className="lueur-vital-card-foot">
+                {spo2History.length >= 2 ? (
+                  <div className="lueur-vital-spo2-chart">
+                    <Spo2ThresholdChart series={spo2History} variant="vital" />
+                  </div>
+                ) : (
+                  <VitalSparkFoot
+                    points={spo2History}
+                    color={COLORS.BLUE}
+                    gradient="blue"
+                    valueUnit="%"
+                    formatValue={(v) => formatMetricValue("SpO2", v)}
+                    caption={null}
+                    enriched={false}
+                  />
+                )}
+                <div className="lueur-mono-meta">
+                  {spo2History.length > 0 ? (
                     <>
+                      {spo2LowN > 0 && (
+                        <span className="lueur-vital-spo2-warn">
+                          {spo2LowN} nuit{spo2LowN > 1 ? "s" : ""} sous 95 % ·{" "}
+                        </span>
+                      )}
                       tendance {spo2History.length} j ·{" "}
                       <button
                         type="button"
@@ -541,9 +602,9 @@ export function TodayView({
                     </>
                   ) : (
                     "—"
-                  )
-                }
-              />
+                  )}
+                </div>
+              </div>
             }
           />
         )}

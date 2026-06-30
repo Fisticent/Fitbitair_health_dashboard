@@ -1,13 +1,16 @@
 import { useMemo, useState } from "react";
 import { LueurCard } from "./LueurCard";
-import { COLORS, formatChartDate, pickVisibleXLabels, xLabelStyle } from "./chartUtils";
+import { COLORS, formatChartDate, pickVisibleXLabels, xLabelStyle, smoothLinePath, smoothAreaPath } from "./chartUtils";
 import { seriesBaseline } from "../../utils/comparisons";
 import { formatMetricValue } from "../../utils/formatMetric";
 import { LueurMetricLabel } from "./LueurInfoTip";
 import { MiniSparkChart } from "./MiniSparkChart";
+import { Spo2ThresholdChart, StressZonesChart } from "./AdvancedCharts";
+import { useFluidChartSize } from "./useFluidChartSize";
 
 const W = 520;
-const H_SCORES = 176;
+const SCORES_MULTIPLES_H = 228;
+const VITALS_SPLIT_CHART_H = 96;
 
 function dayLabel(iso) {
   if (!iso) return "";
@@ -40,11 +43,7 @@ function buildSegments(history, key, xOf, yOf) {
 }
 
 function areaFromSegment(seg, baseY) {
-  if (!seg.length) return "";
-  const head = seg.map((p, j) => `${j === 0 ? "M" : "L"}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
-  const last = seg[seg.length - 1];
-  const first = seg[0];
-  return `${head} L${last.x.toFixed(1)} ${baseY} L${first.x.toFixed(1)} ${baseY} Z`;
+  return smoothAreaPath(seg, baseY);
 }
 
 function ChartLegend({ items }) {
@@ -162,16 +161,19 @@ function LueurVitalsChart({ history }) {
               </span>
             )}
           </div>
-          <MiniSparkChart
-            points={hrvPoints}
-            width={W}
-            height={100}
-            pad={12}
-            color={COLORS.TEAL}
-            gradient="teal"
-            valueUnit="ms"
-            formatValue={(v) => formatMetricValue("HRV", v)}
-          />
+          <div className="lueur-vitals-split-chart">
+            <MiniSparkChart
+              points={hrvPoints}
+              width={W}
+              height={VITALS_SPLIT_CHART_H}
+              pad={12}
+              color={COLORS.TEAL}
+              gradient="teal"
+              valueUnit="ms"
+              enriched
+              formatValue={(v) => formatMetricValue("HRV", v)}
+            />
+          </div>
         </div>
       )}
       {rhrPoints.length > 0 && (
@@ -184,16 +186,19 @@ function LueurVitalsChart({ history }) {
               </span>
             )}
           </div>
-          <MiniSparkChart
-            points={rhrPoints}
-            width={W}
-            height={100}
-            pad={12}
-            color={COLORS.CORAL}
-            gradient="coral"
-            valueUnit="bpm"
-            formatValue={(v) => formatMetricValue("RHR", v)}
-          />
+          <div className="lueur-vitals-split-chart">
+            <MiniSparkChart
+              points={rhrPoints}
+              width={W}
+              height={VITALS_SPLIT_CHART_H}
+              pad={12}
+              color={COLORS.CORAL}
+              gradient="coral"
+              valueUnit="bpm"
+              enriched
+              formatValue={(v) => formatMetricValue("RHR", v)}
+            />
+          </div>
         </div>
       )}
     </div>
@@ -220,6 +225,7 @@ function LueurRespSpo2Chart({ history }) {
 
   const respAvg = seriesBaseline(history, "respiratory");
   const spo2Avg = seriesBaseline(history, "spo2");
+  const spo2LowN = spo2Points.filter((p) => p.value < 95).length;
 
   return (
     <div className="lueur-vitals-split">
@@ -233,38 +239,60 @@ function LueurRespSpo2Chart({ history }) {
               </span>
             )}
           </div>
-          <MiniSparkChart
-            points={respPoints}
-            width={W}
-            height={100}
-            pad={12}
-            color={COLORS.BLUE}
-            gradient="blue"
-            valueUnit="/min"
-            formatValue={(v) => formatMetricValue("Respiration", v)}
-          />
+          <div className="lueur-vitals-split-chart">
+            <MiniSparkChart
+              points={respPoints}
+              width={W}
+              height={VITALS_SPLIT_CHART_H}
+              pad={12}
+              color={COLORS.BLUE}
+              gradient="blue"
+              valueUnit="/min"
+              enriched
+              formatValue={(v) => formatMetricValue("Respiration", v)}
+            />
+          </div>
         </div>
       )}
       {spo2Points.length > 0 && (
         <div className="lueur-vitals-split-block">
           <div className="lueur-vitals-split-head">
             <span className="lueur-stat-chart-label">SpO₂</span>
-            {spo2Avg != null && (
-              <span className="lueur-chart-avg-pill lueur-chart-avg-pill--blue">
-                moy. {formatMetricValue("SpO2", spo2Avg)} %
-              </span>
+            <div className="lueur-vitals-split-pills">
+              {spo2Avg != null && (
+                <span className="lueur-chart-avg-pill lueur-chart-avg-pill--blue">
+                  moy. {formatMetricValue("SpO2", spo2Avg)} %
+                </span>
+              )}
+              {spo2LowN > 0 && (
+                <span className="lueur-chart-avg-pill lueur-chart-avg-pill--coral">
+                  {spo2LowN} nuit{spo2LowN > 1 ? "s" : ""} sous 95 %
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="lueur-vitals-split-chart">
+            {spo2Points.length >= 2 ? (
+              <Spo2ThresholdChart
+                series={spo2Points}
+                variant="compact"
+                width={W}
+                height={VITALS_SPLIT_CHART_H}
+              />
+            ) : (
+              <MiniSparkChart
+                points={spo2Points}
+                width={W}
+                height={VITALS_SPLIT_CHART_H}
+                pad={12}
+                color={COLORS.BLUE}
+                gradient="blue"
+                valueUnit="%"
+                enriched
+                formatValue={(v) => formatMetricValue("SpO2", v)}
+              />
             )}
           </div>
-          <MiniSparkChart
-            points={spo2Points}
-            width={W}
-            height={100}
-            pad={12}
-            color={COLORS.BLUE}
-            gradient="blue"
-            valueUnit="%"
-            formatValue={(v) => formatMetricValue("SpO2", v)}
-          />
         </div>
       )}
     </div>
@@ -272,250 +300,221 @@ function LueurRespSpo2Chart({ history }) {
 }
 
 const SLEEP_COLOR = "#8b7fd4";
-const SCORE_TICKS = [0, 25, 50, 75, 100];
+const SCORE_TRACKS = [
+  { key: "recovery", label: "Récupération", color: COLORS.TEAL, fillOpacity: 0.12 },
+  { key: "sleep", label: "Sommeil", color: SLEEP_COLOR, fillOpacity: 0.1 },
+  { key: "strain", label: "Charge", color: COLORS.BLUE, fillOpacity: 0.08 },
+];
 
 function LueurScoresChart({ history }) {
   const [hover, setHover] = useState(null);
+  const { ref, vw, vh, scale: s } = useFluidChartSize({ w: W, h: SCORES_MULTIPLES_H }, 300);
+  const t = Math.min(s, 1.08);
 
   const layout = useMemo(() => {
     if (!history?.length) return null;
-    const pad = { t: 12, r: 16, b: 8, l: 16 };
-    const innerW = W - pad.l - pad.r;
-    const innerH = H_SCORES - pad.t - pad.b;
+
+    const padL = vw * 0.175;
+    const padR = vw * 0.11;
+    const padT = 8 * t;
+    const padB = 22 * t;
+    const trackGap = 7 * t;
     const n = history.length;
-    const xInset = 12;
-    const plotW = innerW - xInset * 2;
-    const xOf = (i) => pad.l + xInset + (plotW * i) / Math.max(n - 1, 1);
-    const yOf = (v) => pad.t + innerH * (1 - Math.min(100, Math.max(0, v)) / 100);
+    const plotW = vw - padL - padR;
+    const trackH = (vh - padT - padB - 2 * trackGap) / 3;
+    const xOf = (i) => padL + (plotW * i) / Math.max(n - 1, 1);
+    const xPoints = history.map((row, i) => ({ date: row.date, x: xOf(i) }));
+    const bandW = plotW / Math.max(n - 1, 1);
 
-    const recovery = buildSegments(history, "recovery", xOf, yOf);
-    const sleep = buildSegments(history, "sleep", xOf, yOf);
-    const strain = buildSegments(history, "strain", xOf, yOf);
+    const tracks = SCORE_TRACKS.map((def, ti) => {
+      const trackTop = padT + ti * (trackH + trackGap);
+      const baseY = trackTop + trackH;
+      const yOf = (v) => trackTop + trackH * (1 - Math.min(100, Math.max(0, v)) / 100);
+      const seg = buildSegments(history, def.key, xOf, yOf);
+      const avg = seriesBaseline(history, def.key);
+      const valid = seg.coords.filter((c) => c.y != null);
+      const last = valid[valid.length - 1] ?? null;
 
-    const xPoints = history.map((row, i) => ({
-      date: row.date,
-      x: xOf(i),
-    }));
+      return {
+        ...def,
+        trackTop,
+        trackH,
+        baseY,
+        yOf,
+        seg,
+        avg,
+        last,
+      };
+    });
 
-    return {
-      pad,
-      innerH,
-      innerW,
-      n,
-      recovery,
-      sleep,
-      strain,
-      recAvg: seriesBaseline(history, "recovery"),
-      baseY: pad.t + innerH,
-      yOf,
-      xPoints,
-    };
-  }, [history]);
+    return { padL, padR, padT, padB, trackH, xPoints, bandW, tracks, plotBottom: padT + 3 * trackH + 2 * trackGap };
+  }, [history, vw, vh, t]);
 
   if (!layout) return null;
 
-  const { pad, innerH, n, recovery, sleep, strain, recAvg, baseY, yOf, xPoints } = layout;
-  const bandW = layout.innerW / Math.max(n - 1, 1);
+  const { padL, padR, xPoints, bandW, tracks, plotBottom, padT } = layout;
   const activeIdx = hover;
   const activeRow = activeIdx != null ? history[activeIdx] : null;
   const activeX = activeIdx != null ? xPoints[activeIdx]?.x : null;
 
-  const avgPill =
-    recAvg != null ? (
-      <div className="lueur-weight-chart-avg-pill">Récup. moy. {recAvg} %</div>
-    ) : null;
-
   return (
-    <ChartPanel avgPill={avgPill} plotHeight={H_SCORES} onMouseLeave={() => setHover(null)}>
-          <div className="lueur-chart-plot-row">
-          <ChartYAxis ticks={SCORE_TICKS} height={H_SCORES} />
-          <div className="lueur-chart-plot">
-          {activeRow && activeX != null && (
-            <div className="lueur-spark-tooltip" style={{ left: `${(activeX / W) * 100}%` }}>
-              <span className="lueur-spark-tooltip-date">{formatChartDate(activeRow.date)}</span>
-              {activeRow.recovery != null && (
-                <span className="lueur-spark-tooltip-value">Récup. {activeRow.recovery} %</span>
-              )}
-              {activeRow.sleep != null && (
-                <span className="lueur-spark-tooltip-value">Sommeil {activeRow.sleep} %</span>
-              )}
-              {activeRow.strain != null && (
-                <span className="lueur-spark-tooltip-value">Charge {activeRow.strain} %</span>
-              )}
-            </div>
-          )}
-
+    <div className="lueur-scores-multiples-panel">
+      <div className="lueur-scores-multiples" onMouseLeave={() => setHover(null)}>
+        {activeRow && activeX != null && (
+          <div className="lueur-spark-tooltip" style={{ left: `${(activeX / vw) * 100}%` }}>
+            <span className="lueur-spark-tooltip-date">{formatChartDate(activeRow.date)}</span>
+            {activeRow.recovery != null && (
+              <span className="lueur-spark-tooltip-value">Récup. {activeRow.recovery} %</span>
+            )}
+            {activeRow.sleep != null && (
+              <span className="lueur-spark-tooltip-value">Sommeil {activeRow.sleep} %</span>
+            )}
+            {activeRow.strain != null && (
+              <span className="lueur-spark-tooltip-value">Charge {activeRow.strain} %</span>
+            )}
+          </div>
+        )}
+        <div ref={ref} className="lueur-chart-fluid-wrap">
           <svg
-            width={W}
-            height={H_SCORES}
-            viewBox={`0 0 ${W} ${H_SCORES}`}
-            className="lueur-weight-chart-svg lueur-chart-plot-svg"
+            viewBox={`0 0 ${vw} ${vh}`}
+            width="100%"
+            className="lueur-chart-fluid-svg lueur-scores-multiples-svg"
             aria-hidden="true"
           >
-            <rect
-              x={pad.l}
-              y={pad.t}
-              width={W - pad.l - pad.r}
-              height={baseY - pad.t}
-              rx="10"
-              fill="#f8f9fb"
-            />
-
-            {SCORE_TICKS.map((tick) => (
-              <line
-                key={tick}
-                x1={pad.l + 4}
-                y1={yOf(tick)}
-                x2={W - pad.r}
-                y2={yOf(tick)}
-                stroke="#e8eaee"
-                strokeWidth="1"
-              />
+            {tracks.map((track) => (
+              <g key={track.key}>
+                <rect
+                  x={padL - 4 * t}
+                  y={track.trackTop}
+                  width={vw - padL - padR + 8 * t}
+                  height={track.trackH}
+                  rx={8 * t}
+                  fill="#f8f9fb"
+                />
+                <text
+                  x={10 * t}
+                  y={track.trackTop + 14 * t}
+                  fontSize={11 * t}
+                  fontWeight="600"
+                  fill={track.color}
+                  fontFamily="var(--lueur-sans)"
+                >
+                  {track.label}
+                </text>
+                {track.avg != null && (
+                  <text
+                    x={10 * t}
+                    y={track.trackTop + 28 * t}
+                    fontSize={9 * t}
+                    fill="#9aa0ab"
+                    fontFamily="var(--lueur-mono)"
+                  >
+                    moy {track.avg}
+                  </text>
+                )}
+                {track.seg.segments.map((segment, si) => (
+                  <path
+                    key={`${track.key}-a-${si}`}
+                    d={areaFromSegment(segment, track.baseY)}
+                    fill={track.color}
+                    fillOpacity={track.fillOpacity}
+                  />
+                ))}
+                {track.avg != null && (
+                  <line
+                    x1={padL}
+                    y1={track.yOf(track.avg)}
+                    x2={vw - padR}
+                    y2={track.yOf(track.avg)}
+                    stroke="#c5cad3"
+                    strokeWidth={1 * t}
+                    strokeDasharray="4 4"
+                    strokeOpacity="0.9"
+                  />
+                )}
+                {track.seg.segments.map((segment, si) => {
+                  const d =
+                    segment.length >= 2
+                      ? smoothLinePath(segment)
+                      : segment.length === 1
+                        ? `M${segment[0].x.toFixed(1)} ${segment[0].y.toFixed(1)}`
+                        : "";
+                  if (!d) return null;
+                  return (
+                    <path
+                      key={`${track.key}-l-${si}`}
+                      d={d}
+                      fill="none"
+                      stroke={track.color}
+                      strokeWidth={2 * t}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  );
+                })}
+                {track.last && (
+                  <>
+                    <circle
+                      cx={track.last.x}
+                      cy={track.last.y}
+                      r={3.5 * t}
+                      fill={track.color}
+                      stroke="#fff"
+                      strokeWidth={1.5 * t}
+                    />
+                    <text
+                      x={Math.min(track.last.x + 8 * t, vw - padR - 4 * t)}
+                      y={track.last.y - 5 * t}
+                      fontSize={10 * t}
+                      fontWeight="600"
+                      fill={track.color}
+                      fontFamily="var(--lueur-mono)"
+                    >
+                      {track.last.value}
+                    </text>
+                  </>
+                )}
+              </g>
             ))}
-
-            {recAvg != null && (
-              <line
-                x1={pad.l + 4}
-                y1={yOf(recAvg)}
-                x2={W - pad.r}
-                y2={yOf(recAvg)}
-                stroke={COLORS.TEAL}
-                strokeDasharray="5 5"
-                strokeOpacity="0.45"
-              />
-            )}
-
-            {recovery?.segments.map((seg, i) => (
-              <path
-                key={`rec-a-${i}`}
-                d={areaFromSegment(seg, baseY)}
-                fill={COLORS.TEAL}
-                fillOpacity="0.12"
-              />
-            ))}
-            {sleep?.segments.map((seg, i) => (
-              <path
-                key={`slp-a-${i}`}
-                d={areaFromSegment(seg, baseY)}
-                fill={SLEEP_COLOR}
-                fillOpacity="0.1"
-              />
-            ))}
-
-            {recovery?.segments.map((seg, i) => (
-              <path
-                key={`rec-l-${i}`}
-                d={seg.map((p, j) => `${j === 0 ? "M" : "L"}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ")}
-                fill="none"
-                stroke={COLORS.TEAL}
-                strokeWidth="2.4"
-                strokeLinecap="round"
-              />
-            ))}
-            {sleep?.segments.map((seg, i) => (
-              <path
-                key={`slp-l-${i}`}
-                d={seg.map((p, j) => `${j === 0 ? "M" : "L"}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ")}
-                fill="none"
-                stroke={SLEEP_COLOR}
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeOpacity="0.85"
-              />
-            ))}
-            {strain?.segments.map((seg, i) => (
-              <path
-                key={`str-l-${i}`}
-                d={seg.map((p, j) => `${j === 0 ? "M" : "L"}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ")}
-                fill="none"
-                stroke={COLORS.BLUE}
-                strokeWidth="2.2"
-                strokeLinecap="round"
-              />
-            ))}
-
             {history.map((row, i) => (
               <rect
                 key={row.date}
                 x={xPoints[i].x - bandW / 2}
-                y={pad.t}
+                y={padT}
                 width={bandW}
-                height={innerH}
+                height={plotBottom - padT}
                 fill="transparent"
                 onMouseEnter={() => setHover(i)}
               />
             ))}
-
             {activeX != null && (
               <line
                 x1={activeX}
-                y1={pad.t}
+                y1={padT}
                 x2={activeX}
-                y2={baseY}
+                y2={plotBottom}
                 stroke="#9aa0ab"
-                strokeWidth="1"
+                strokeWidth={1 * t}
                 strokeDasharray="3 3"
-                strokeOpacity="0.5"
+                strokeOpacity="0.45"
               />
             )}
           </svg>
-
-          <ChartXLabels points={xPoints} width={W} />
-          </div>
-          </div>
-
-          <ChartLegend
-            items={[
-              { label: "Récupération", color: COLORS.TEAL },
-              { label: "Sommeil", color: SLEEP_COLOR },
-              { label: "Charge", color: COLORS.BLUE },
-            ]}
-          />
-          <p className="lueur-chart-footnote">
-            Récupération, sommeil et charge sur la même échelle 0–100 %.
-          </p>
-    </ChartPanel>
+          <ChartXLabels points={xPoints} width={vw} />
+        </div>
+      </div>
+      <p className="lueur-chart-footnote">
+        Une piste par KPI, échelle 0–100 partagée, moyenne propre à chaque série. Zéro occlusion.
+      </p>
+    </div>
   );
 }
 
 function LueurStressChart({ history }) {
-  const [hover, setHover] = useState(null);
-
   const stressHistory = useMemo(
-    () => (history || []).filter((d) => d.stress != null),
+    () => (history || []).filter((d) => d.stress != null).slice(-14),
     [history],
   );
-
-  const layout = useMemo(() => {
-    if (!stressHistory.length) return null;
-    const pad = { t: 12, r: 16, b: 8, l: 16 };
-    const innerW = W - pad.l - pad.r;
-    const innerH = H_SCORES - pad.t - pad.b;
-    const n = stressHistory.length;
-    const xInset = 12;
-    const plotW = innerW - xInset * 2;
-    const xOf = (i) =>
-      pad.l + xInset + (n === 1 ? plotW / 2 : (plotW * i) / Math.max(n - 1, 1));
-    const yOf = (v) => pad.t + innerH * (1 - Math.min(100, Math.max(0, v)) / 100);
-
-    const stress = buildSegments(stressHistory, "stress", xOf, yOf);
-    const xPoints = stressHistory.map((row, i) => ({
-      date: row.date,
-      x: xOf(i),
-    }));
-
-    return {
-      pad,
-      innerH,
-      innerW,
-      n,
-      stress,
-      stressAvg: seriesBaseline(stressHistory, "stress"),
-      baseY: pad.t + innerH,
-      yOf,
-      xPoints,
-    };
-  }, [stressHistory]);
 
   if (!stressHistory.length) {
     return (
@@ -547,144 +546,8 @@ function LueurStressChart({ history }) {
     );
   }
 
-  if (!layout) return null;
-
-  const { pad, innerH, n, stress, stressAvg, baseY, yOf, xPoints } = layout;
-  const bandW = layout.innerW / Math.max(n - 1, 1);
-  const activeIdx = hover;
-  const activeRow = activeIdx != null ? stressHistory[activeIdx] : null;
-  const activeX = activeIdx != null ? xPoints[activeIdx]?.x : null;
-
-  const pills = [
-    stressAvg != null ? { text: `Stress moy. ${stressAvg} %`, tone: "coral" } : null,
-    n === 1
-      ? {
-          text: `${stressHistory[0].stress} % aujourd'hui · tendance dès 2 jours de FC diurne`,
-          tone: "muted",
-        }
-      : null,
-  ].filter(Boolean);
-
-  return (
-    <ChartPanel pills={pills} plotHeight={H_SCORES} onMouseLeave={() => setHover(null)}>
-      <div className="lueur-chart-plot-row">
-        <ChartYAxis ticks={SCORE_TICKS} height={H_SCORES} />
-        <div className="lueur-chart-plot">
-          {activeRow && activeX != null && (
-            <div className="lueur-spark-tooltip" style={{ left: `${(activeX / W) * 100}%` }}>
-              <span className="lueur-spark-tooltip-date">{formatChartDate(activeRow.date)}</span>
-              {activeRow.stress != null && (
-                <span className="lueur-spark-tooltip-value">Stress {activeRow.stress} %</span>
-              )}
-            </div>
-          )}
-
-          <svg
-            width={W}
-            height={H_SCORES}
-            viewBox={`0 0 ${W} ${H_SCORES}`}
-            className="lueur-weight-chart-svg lueur-chart-plot-svg"
-            aria-hidden="true"
-          >
-            <rect
-              x={pad.l}
-              y={pad.t}
-              width={W - pad.l - pad.r}
-              height={baseY - pad.t}
-              rx="10"
-              fill="#f8f9fb"
-            />
-
-            {SCORE_TICKS.map((tick) => (
-              <line
-                key={tick}
-                x1={pad.l + 4}
-                y1={yOf(tick)}
-                x2={W - pad.r}
-                y2={yOf(tick)}
-                stroke="#e8eaee"
-                strokeWidth="1"
-              />
-            ))}
-
-            {stressAvg != null && (
-              <line
-                x1={pad.l + 4}
-                y1={yOf(stressAvg)}
-                x2={W - pad.r}
-                y2={yOf(stressAvg)}
-                stroke={COLORS.CORAL}
-                strokeDasharray="5 5"
-                strokeOpacity="0.45"
-              />
-            )}
-
-            {stress?.segments.map((seg, i) => (
-              <path
-                key={`stress-a-${i}`}
-                d={areaFromSegment(seg, baseY)}
-                fill={COLORS.CORAL}
-                fillOpacity="0.12"
-              />
-            ))}
-            {stress?.segments.map((seg, i) => (
-              <path
-                key={`stress-l-${i}`}
-                d={seg.map((p, j) => `${j === 0 ? "M" : "L"}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ")}
-                fill="none"
-                stroke={COLORS.CORAL}
-                strokeWidth="2.4"
-                strokeLinecap="round"
-              />
-            ))}
-
-            {stress?.coords
-              ?.filter((p) => p.y != null)
-              .map((p) => (
-                <circle
-                  key={p.date}
-                  cx={p.x}
-                  cy={p.y}
-                  r={n === 1 ? 5 : 3.5}
-                  fill={COLORS.CORAL}
-                  stroke="#fff"
-                  strokeWidth="1.5"
-                />
-              ))}
-
-            {stressHistory.map((row, i) => (
-              <rect
-                key={row.date}
-                x={xPoints[i].x - bandW / 2}
-                y={pad.t}
-                width={bandW}
-                height={innerH}
-                fill="transparent"
-                onMouseEnter={() => setHover(i)}
-              />
-            ))}
-
-            {activeX != null && (
-              <line
-                x1={activeX}
-                y1={pad.t}
-                x2={activeX}
-                y2={baseY}
-                stroke="#9aa0ab"
-                strokeWidth="1"
-                strokeDasharray="3 3"
-                strokeOpacity="0.5"
-              />
-            )}
-          </svg>
-
-          <ChartXLabels points={xPoints} width={W} />
-        </div>
-      </div>
-
-      <ChartLegend items={[{ label: "Stress (estimation FC)", color: COLORS.CORAL }]} />
-    </ChartPanel>
-  );
+  const series = stressHistory.map((row) => ({ date: row.date, value: row.stress }));
+  return <StressZonesChart series={series} />;
 }
 
 export function LueurComparePanel({ history }) {

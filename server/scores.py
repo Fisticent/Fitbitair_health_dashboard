@@ -655,10 +655,23 @@ def compute_stress_proxy(
     strain_by_day: dict[str, float] | None = None,
     skin_temp: dict[str, dict] | None = None,
 ) -> dict[str, Any]:
-    """Relative acute-stress index from autonomic signals vs the person's own baseline.
+    """Relative acute-stress index from autonomic signals vs the person's own
+    baseline — the "Daytime Stress" / "Responsiveness" layer of Oura/Whoop/Fitbit.
 
-    If daytime average heart rate (hr_avg) is missing (common for older history due to density),
-    it falls back to using the resting heart rate (RHR) deviation from baseline.
+    Combines up to three signals, each z-scored against the prior ~14 days so the
+    index means *unusual for you today* rather than flagging normal physiology:
+      • HRV depression (primary, weight 0.6) — z-scored on ``ln(HRV)`` (lnRMSSD,
+        like WHOOP) for stable day-to-day comparison; stress rises as HRV falls.
+      • HR elevation (0.4) — daytime-HR-over-resting when daytime average HR is
+        available; otherwise a fallback on resting-HR deviation from baseline
+        (daytime HR is missing on much older history). Damped by today's strain
+        so a workout isn't misread as stress (motion compensation).
+      • Nightly skin-temperature deviation from baseline (0.2) — warmer than your
+        baseline = stress/illness/strain, the third core signal Oura/Whoop use.
+    A logistic squashes the combined z into 0–100, so a clearly elevated day
+    lands ~70 (Élevé) instead of pegging at 100 (the old linear 50+20·z hit the
+    ceiling at z≥2.5). Higher = more stress. The long-term/chronic layer lives
+    separately in ``health_monitor`` (HRV drift), mirroring Oura's split.
     """
     baseline = rhr.get(day)
     if not baseline:
@@ -706,6 +719,8 @@ def compute_stress_proxy(
     if hrv:
         ln_hist = [math.log(hrv[d]) for d in sorted(hrv) if d < day and hrv.get(d) and hrv[d] > 0]
         if hrv.get(day) and hrv[day] > 0:
+            # Floor 0.12 in ln-space ≈ a 12% HRV swing = 1σ minimum (typical lnRMSSD
+            # day-to-day CV), so a very regular sleeper can't blow normal noise up.
             zr = _robust_z(math.log(hrv[day]), ln_hist, floor=0.12)
             if zr is not None:
                 z_hrv = -zr  # stress rises as HRV falls
@@ -718,6 +733,7 @@ def compute_stress_proxy(
             for d in sorted(skin_temp)
             if d < day and skin_temp[d].get("deviation") is not None
         ]
+        # Floor 0.15°C ≈ typical nightly skin-temp noise so small drifts stay calm.
         z_temp = _robust_z(skin_temp[day]["deviation"], dev_hist, floor=0.15)
 
     parts: list[tuple[float, float]] = []
@@ -741,8 +757,25 @@ def compute_stress_proxy(
         basis = "personal"
         status = "ok"
         baseline_pct = round(statistics.median(elev_hist), 1) if elev_hist else None
+    elif proxy_pct is not None:
+        # Cold start with a daytime-HR reading but no baseline history yet:
+        # bounded logistic on absolute elevation (~25% = neutral) so the score
+        # never pegs at 100. Flagged ``calibrating`` so the UI shows a
+        # provisional estimate, like Oura/WHOOP withhold a confident daytime-
+        # stress read until a personal baseline exists.
+        score = round(100 / (1 + math.exp(-0.06 * (proxy_pct - 25))))
+        if proxy_pct < 20:
+            label, level = "Bas", "low"
+        elif proxy_pct < 35:
+            label, level = "Modéré", "medium"
+        else:
+            label, level = "Élevé", "high"
+        basis = "absolute"
+        status = "calibrating"
+        baseline_pct = None
     else:
-        # Fallback to neutral score when no baseline history can be computed
+        # No signal at all yet (no daytime HR, no HRV/temp baseline): stay
+        # neutral rather than invent a number, and flag it as calibrating.
         score = 50
         label, level = "Modéré", "medium"
         basis = "absolute"

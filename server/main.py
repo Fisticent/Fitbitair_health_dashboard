@@ -353,6 +353,13 @@ def _sync_to_sheets(raw_data: dict) -> None:
         active_energy = parsed["active_energy"]
         skin_temp = parsed["skin_temp"]
         spo2 = parsed["spo2"]
+        vo2 = parsed["vo2"]
+        body_fat = parsed["body_fat"]
+        exercise = parsed["exercise"]
+        hr_avg = parsed["hr_avg"]
+        google_profile = parsed["profile"]
+        age = _derive_age(google_profile)
+        sex = _derive_sex(google_profile)
 
         # Get existing dates from column A (A:A) to decide whether to append or update
         res = sheet.values().get(spreadsheetId=spreadsheet_id, range="Sheet1!A:A").execute()
@@ -404,6 +411,31 @@ def _sync_to_sheets(raw_data: dict) -> None:
             spo2_val = spo2.get(d)
             temp_dev = (skin_temp.get(d) or {}).get("deviation")
 
+            # Age
+            try:
+                x_age_d = s.compute_physiological_age(d, age, rhr, hrv, sleep, steps, zones, vo2, body_fat, sex=sex)
+                func_age = x_age_d.get("functional_age")
+            except Exception:
+                func_age = None
+
+            # Weight / Body fat
+            w_date_d, w_kg_d = s.nearest_metric(parsed["weight"], d)
+            bf_date_d, bf_pct_d = s.nearest_metric(body_fat, d)
+
+            # VO2 max
+            vo2_val = vo2.get(d)
+
+            # Exercise
+            ex_d = exercise.get(d, {})
+            ex_mins = ex_d.get("minutes", 0)
+            ex_count = ex_d.get("count", 0)
+
+            # Stress
+            try:
+                stress_val = s.compute_stress_proxy(d, hr_avg, rhr, hrv, strain_by_day, skin_temp).get("score")
+            except Exception:
+                stress_val = None
+
             row_data = [
                 str(d),
                 str(round(rec_val)) if rec_val is not None else "",
@@ -419,6 +451,14 @@ def _sync_to_sheets(raw_data: dict) -> None:
                 str(round(temp_dev, 3)) if temp_dev is not None else "",
                 str(round(active_cal)) if active_cal is not None else "",
                 str(round(strain_val)) if strain_val is not None else "",
+                str(age),
+                str(round(func_age, 1)) if func_age is not None else "",
+                str(round(w_kg_d, 1)) if w_kg_d is not None else "",
+                str(round(bf_pct_d, 1)) if bf_pct_d is not None else "",
+                str(round(vo2_val, 1)) if vo2_val is not None else "",
+                str(ex_mins) if ex_mins > 0 else "",
+                str(ex_count) if ex_count > 0 else "",
+                str(round(stress_val)) if stress_val is not None else "",
             ]
 
             if d in date_to_row:
@@ -426,7 +466,7 @@ def _sync_to_sheets(raw_data: dict) -> None:
                 row_num = date_to_row[d]
                 sheet.values().update(
                     spreadsheetId=spreadsheet_id,
-                    range=f"Sheet1!A{row_num}:N{row_num}",
+                    range=f"Sheet1!A{row_num}:V{row_num}",
                     valueInputOption="USER_ENTERED",
                     body={"values": [row_data]},
                 ).execute()

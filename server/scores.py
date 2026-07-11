@@ -358,14 +358,32 @@ def health_monitor(
     hist = [d for d in dates if d < day][-30:]
     metrics = []
 
-    def row(name: str, unit: str, val: float | None, hist_vals: list[float], invert: bool = False):
+    def row(
+        name: str,
+        unit: str,
+        val: float | None,
+        hist_vals: list[float],
+        *,
+        invert: bool = False,
+        low_only: bool = False,
+        floor: float = 1.0,
+    ):
         if val is None:
             return None
-        z = z_score(val, hist_vals) if hist_vals else 0
+        # Median/MAD z like every other score here — a single odd day in the
+        # window can't inflate σ and mask (or fake) a real anomaly.
+        z = _robust_z(val, hist_vals, floor=floor, min_n=5) if hist_vals else None
+        if z is None:
+            z = 0.0
         if invert:
             z = -z
-        status = "normal" if abs(z) < 1 else "warning" if abs(z) < 2 else "alert"
-        baseline = round(statistics.mean(hist_vals), 1) if hist_vals else _display_metric(name, val)
+        # After `invert`, z is oriented so positive = better-than-baseline,
+        # negative = worse. Two-sided metrics flag any deviation; SpO₂ is
+        # clinically one-sided — only a *drop* matters (Fitbit/Garmin alert on
+        # low O₂ only), so an unusually high reading never trips a warning.
+        risk = max(0.0, -z) if low_only else abs(z)
+        status = "normal" if risk < 1 else "warning" if risk < 2 else "alert"
+        baseline = round(statistics.median(hist_vals), 1) if hist_vals else _display_metric(name, val)
         return {
             "name": name,
             "value": _display_metric(name, val),
@@ -376,15 +394,16 @@ def health_monitor(
         }
 
     for item in [
-        row("FC repos", "bpm", rhr.get(day), [rhr[d] for d in hist if d in rhr], invert=True),
-        row("VFC", "ms", hrv.get(day), [hrv[d] for d in hist if d in hrv]),
-        row("Respiration", "/min", resp.get(day), [resp[d] for d in hist if d in resp], invert=True),
-        row("SpO₂", "%", spo2.get(day), [spo2[d] for d in hist if d in spo2]),
+        row("FC repos", "bpm", rhr.get(day), [rhr[d] for d in hist if d in rhr], invert=True, floor=2.0),
+        row("VFC", "ms", hrv.get(day), [hrv[d] for d in hist if d in hrv], floor=3.0),
+        row("Respiration", "/min", resp.get(day), [resp[d] for d in hist if d in resp], invert=True, floor=0.5),
+        row("SpO₂", "%", spo2.get(day), [spo2[d] for d in hist if d in spo2], low_only=True, floor=1.0),
         row(
             "Temp. peau", "°C",
             (skin_temp.get(day) or {}).get("nightly"),
             [skin_temp[d]["nightly"] for d in hist if d in skin_temp and skin_temp[d].get("nightly") is not None],
             invert=True,  # warmer than baseline = worse
+            floor=0.15,
         ),
     ]:
         if item:
@@ -636,25 +655,13 @@ def compute_stress_proxy(
     strain_by_day: dict[str, float] | None = None,
     skin_temp: dict[str, dict] | None = None,
 ) -> dict[str, Any]:
-    """Relative acute-stress index from autonomic signals vs the person's own
-    baseline — the "Daytime Stress" / "Responsiveness" layer of Oura/Whoop/Fitbit.
+    """Relative acute-stress index from autonomic signals vs the person's own baseline.
 
-    Combines up to three signals, each z-scored against the prior ~14 days so the
-    index means *unusual for you today* rather than flagging normal physiology:
-      • HRV depression (primary, weight 0.6) — z-scored on ``ln(HRV)`` (lnRMSSD,
-        like WHOOP) for stable day-to-day comparison; stress rises as HRV falls.
-      • Daytime-HR elevation over resting (0.4) — damped by today's strain so a
-        workout isn't misread as stress (motion compensation).
-      • Nightly skin-temperature deviation from baseline (0.2) — warmer than your
-        baseline = stress/illness/strain, the third core signal Oura/Whoop use.
-    A logistic squashes the combined z into 0–100, so a clearly elevated day
-    lands ~70 (Élevé) instead of pegging at 100 (the old linear 50+20·z hit the
-    ceiling at z≥2.5). Higher = more stress. The long-term/chronic layer lives
-    separately in ``health_monitor`` (HRV drift), mirroring Oura's split.
+    If daytime average heart rate (hr_avg) is missing (common for older history due to density),
+    it falls back to using the resting heart rate (RHR) deviation from baseline.
     """
-    avg = hr_avg.get(day)
     baseline = rhr.get(day)
-    if not avg or not baseline:
+    if not baseline:
         return {
             "date": day,
             "score": None,
@@ -668,21 +675,30 @@ def compute_stress_proxy(
             "progress": 0.0,
         }
 
-    proxy_pct = round((avg - baseline) / baseline * 100, 1)
+    avg = hr_avg.get(day) if hr_avg else None
+    proxy_pct = round((avg - baseline) / baseline * 100, 1) if avg else None
 
-    # --- HR-elevation signal vs personal baseline (days strictly before `day`) ---
+    # --- HR-elevation signal vs personal baseline ---
+    z_hr = None
     elev_hist: list[float] = []
-    for d in sorted(set(hr_avg) & set(rhr)):
-        if d >= day:
-            continue
-        a, b = hr_avg[d], rhr[d]
-        if a and b:
-            elev_hist.append((a - b) / b * 100)
+    rhr_hist: list[float] = []
 
-    z_hr = _robust_z(proxy_pct, elev_hist, floor=3.0)
-    if z_hr is not None and z_hr > 0:
-        # Only positive (stress-direction) HR elevation can be exercise-driven.
-        z_hr *= _exertion_factor((strain_by_day or {}).get(day))
+    if avg:
+        for d in sorted(set(hr_avg) & set(rhr)):
+            if d >= day:
+                continue
+            a, b = hr_avg[d], rhr[d]
+            if a and b:
+                elev_hist.append((a - b) / b * 100)
+        z_hr = _robust_z(proxy_pct, elev_hist, floor=3.0)
+        if z_hr is not None and z_hr > 0:
+            z_hr *= _exertion_factor((strain_by_day or {}).get(day))
+    else:
+        # Fallback: RHR z-score against history
+        rhr_hist = [rhr[d] for d in sorted(rhr) if d < day and rhr.get(d)]
+        z_hr = _robust_z(baseline, rhr_hist, floor=2.0)
+        if z_hr is not None and z_hr > 0:
+            z_hr *= _exertion_factor((strain_by_day or {}).get(day))
 
     # --- HRV-depression signal vs personal baseline, on ln(HRV) (lnRMSSD) ---
     z_hrv = None
@@ -690,8 +706,6 @@ def compute_stress_proxy(
     if hrv:
         ln_hist = [math.log(hrv[d]) for d in sorted(hrv) if d < day and hrv.get(d) and hrv[d] > 0]
         if hrv.get(day) and hrv[day] > 0:
-            # Floor 0.12 in ln-space ≈ a 12% HRV swing = 1σ minimum (typical lnRMSSD
-            # day-to-day CV), so a very regular sleeper can't blow normal noise up.
             zr = _robust_z(math.log(hrv[day]), ln_hist, floor=0.12)
             if zr is not None:
                 z_hrv = -zr  # stress rises as HRV falls
@@ -704,7 +718,6 @@ def compute_stress_proxy(
             for d in sorted(skin_temp)
             if d < day and skin_temp[d].get("deviation") is not None
         ]
-        # Floor 0.15°C ≈ typical nightly skin-temp noise so small drifts stay calm.
         z_temp = _robust_z(skin_temp[day]["deviation"], dev_hist, floor=0.15)
 
     parts: list[tuple[float, float]] = []
@@ -729,24 +742,16 @@ def compute_stress_proxy(
         status = "ok"
         baseline_pct = round(statistics.median(elev_hist), 1) if elev_hist else None
     else:
-        # Cold start: bounded logistic on absolute elevation (~25% = neutral),
-        # so even before history exists the score never pegs at 100. Flagged
-        # ``calibrating`` so the UI can show a provisional estimate, like Oura/
-        # WHOOP withhold a confident daytime-stress read until a baseline exists.
-        score = round(100 / (1 + math.exp(-0.06 * (proxy_pct - 25))))
-        if proxy_pct < 20:
-            label, level = "Bas", "low"
-        elif proxy_pct < 35:
-            label, level = "Modéré", "medium"
-        else:
-            label, level = "Élevé", "high"
+        # Fallback to neutral score when no baseline history can be computed
+        score = 50
+        label, level = "Modéré", "medium"
         basis = "absolute"
         status = "calibrating"
         baseline_pct = None
 
-    # Calibration progress toward the personal-baseline path (≥10 days of either signal).
+    # Calibration progress based on active signals
     days_needed = 10
-    days_have = min(days_needed, max(len(elev_hist), len(ln_hist)))
+    days_have = min(days_needed, max(len(elev_hist) if avg else len(rhr_hist), len(ln_hist)))
 
     return {
         "date": day,
@@ -755,13 +760,13 @@ def compute_stress_proxy(
         "level": level,
         "status": status,
         "proxy_pct": proxy_pct,
-        "hr_avg": round(avg, 1),
+        "hr_avg": round(avg, 1) if avg else None,
         "rhr_baseline": baseline,
         "baseline_pct": baseline_pct,
         "basis": basis,
         "days": days_have,
         "days_needed": days_needed,
-        "progress": round(days_have / days_needed, 2),
+        "progress": round(days_have / days_needed, 2) if days_needed else 0.0,
         "components": {
             "hrv_z": round(z_hrv, 2) if z_hrv is not None else None,
             "hr_z": round(z_hr, 2) if z_hr is not None else None,
@@ -840,7 +845,11 @@ def compute_physiological_age(
     hrv_vals = [hrv[d] for d in dates if d in hrv]
     if hrv_vals:
         domains += 1
-        factors.append(("VFC", round(_graded(sum(hrv_vals) / len(hrv_vals), 55, -0.015, -0.5, 0.5), 2)))
+        # RMSSD falls ~1 %/yr from age 30 (≈62 ms @30, 48 @40, 38 @50, 24 @65),
+        # so a fixed neutral would penalise older users. Age-track the neutral —
+        # what counts is being above/below the norm for *your* age, not for a 30yo.
+        hrv_neutral = max(25.0, min(75.0, 75 - (age - 20) * 1.1))
+        factors.append(("VFC", round(_graded(sum(hrv_vals) / len(hrv_vals), hrv_neutral, -0.015, -0.5, 0.5), 2)))
 
     # VO₂ max: only count a recent reading, never an indefinitely stale one.
     vo2_date, vo2_val = nearest_metric(vo2, day)

@@ -361,13 +361,10 @@ def _sync_to_sheets(raw_data: dict) -> None:
         age = _derive_age(google_profile)
         sex = _derive_sex(google_profile)
 
-        # Get existing dates from column A (A:A) to decide whether to append or update
-        res = sheet.values().get(spreadsheetId=spreadsheet_id, range="Sheet1!A:A").execute()
+        # Get existing data rows starting from row 2 (excluding header)
+        res = sheet.values().get(spreadsheetId=spreadsheet_id, range="Sheet1!A2:V").execute()
         existing_rows = res.get("values", [])
-        date_to_row = {}
-        for idx, row in enumerate(existing_rows):
-            if row:
-                date_to_row[row[0]] = idx + 1
+        rows_by_date = {row[0]: row for row in existing_rows if len(row) > 0}
 
         # Sync the last 14 days
         today = date_type.today()
@@ -461,23 +458,19 @@ def _sync_to_sheets(raw_data: dict) -> None:
                 str(round(stress_val)) if stress_val is not None else "",
             ]
 
-            if d in date_to_row:
-                # Update existing row
-                row_num = date_to_row[d]
-                sheet.values().update(
-                    spreadsheetId=spreadsheet_id,
-                    range=f"Sheet1!A{row_num}:V{row_num}",
-                    valueInputOption="USER_ENTERED",
-                    body={"values": [row_data]},
-                ).execute()
-            else:
-                # Append new row
-                sheet.values().append(
-                    spreadsheetId=spreadsheet_id,
-                    range="Sheet1!A1",
-                    valueInputOption="USER_ENTERED",
-                    body={"values": [row_data]},
-                ).execute()
+            rows_by_date[d] = row_data
+
+        # Sort all rows by date in reverse chronological order (newest first)
+        sorted_dates = sorted(rows_by_date.keys(), reverse=True)
+        sorted_rows = [rows_by_date[d] for d in sorted_dates]
+
+        # Overwrite the spreadsheet data block starting at row 2
+        sheet.values().update(
+            spreadsheetId=spreadsheet_id,
+            range=f"Sheet1!A2:V{len(sorted_rows) + 1}",
+            valueInputOption="USER_ENTERED",
+            body={"values": sorted_rows}
+        ).execute()
         print(f"[Sheets Sync] Successfully synced last 14 days to Google Sheet.")
     except Exception as e:
         print(f"[Sheets Sync] Error syncing to Google Sheets: {e}")

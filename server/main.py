@@ -302,7 +302,147 @@ def _fetch_raw_locked() -> dict:
     _fetch_errors = errors
     _synced_at = datetime.now(timezone.utc).isoformat()
     _cache_built_at = time.monotonic()
+
+    # Trigger sheets sync in the background if service account is configured
+    _trigger_sheets_sync_bg(results)
+
     return _raw_cache
+
+
+def _trigger_sheets_sync_bg(raw_data: dict) -> None:
+    def _run() -> None:
+        try:
+            _sync_to_sheets(raw_data)
+        except Exception as e:
+            print(f"[Sheets Sync] Background error: {e}")
+
+    threading.Thread(target=_run, name="sheets-sync", daemon=True).start()
+
+
+def _sync_to_sheets(raw_data: dict) -> None:
+    import os
+    import json
+
+    sa_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
+    spreadsheet_id = os.environ.get("GOOGLE_SPREADSHEET_ID")
+    if not sa_json or not spreadsheet_id:
+        return
+
+    print("[Sheets Sync] Sync triggered...")
+    try:
+        from google.oauth2 import service_account
+        from googleapiclient.discovery import build
+
+        # Load credentials from service account JSON string
+        creds_dict = json.loads(sa_json)
+        SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+        creds = service_account.Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+        service = build("sheets", "v4", credentials=creds, cache_discovery=False)
+        sheet = service.spreadsheets()
+
+        # 1. Parse raw data
+        parsed = parse_raw(raw_data)
+
+        hrv = parsed["hrv"]
+        rhr = parsed["rhr"]
+        sleep = parsed["sleep"]
+        resp = parsed["resp"]
+        zones = parsed["zones"]
+        steps = parsed["steps"]
+        distance = parsed["distance"]
+        active_energy = parsed["active_energy"]
+        skin_temp = parsed["skin_temp"]
+        spo2 = parsed["spo2"]
+
+        # Get existing dates from column A (A:A) to decide whether to append or update
+        res = sheet.values().get(spreadsheetId=spreadsheet_id, range="Sheet1!A:A").execute()
+        existing_rows = res.get("values", [])
+        date_to_row = {}
+        for idx, row in enumerate(existing_rows):
+            if row:
+                date_to_row[row[0]] = idx + 1
+
+        # Sync the last 14 days
+        today = date_type.today()
+        sync_dates = sorted([(today - timedelta(days=i)).isoformat() for i in range(15)])
+
+        strain_kw = _strain_ctx(parsed)
+        strain_by_day = {}
+        for d in sync_dates:
+            try:
+                strain_by_day[d] = s.compute_strain(d, zones, **strain_kw)["score"]
+            except Exception:
+                strain_by_day[d] = 0.0
+
+        for d in sync_dates:
+            prior_d = (date_type.fromisoformat(d) - timedelta(days=1)).isoformat()
+            ps = strain_by_day.get(prior_d, 0.0)
+            ps_debt = s.recent_sleep_debt_h(d, sleep)
+
+            try:
+                rec = s.compute_recovery(d, hrv, rhr, sleep, resp, ps, ps_debt, skin_temp)
+                rec_val = rec.get("score")
+            except Exception:
+                rec_val = None
+
+            try:
+                sleep_need = s.sleep_need_hours(ps, ps_debt)
+                sleep_row = s.compute_sleep_score(d, sleep, need=sleep_need)
+                sleep_h = sleep_row.get("hours")
+                sleep_debt = sleep_row.get("debt_hours")
+            except Exception:
+                sleep_h, sleep_need, sleep_debt = None, None, None
+
+            step_val = steps.get(d)
+            dist_val = distance.get(d)
+            active_cal = active_energy.get(d)
+            strain_val = strain_by_day.get(d)
+
+            rhr_val = rhr.get(d)
+            hrv_val = hrv.get(d)
+            resp_val = resp.get(d)
+            spo2_val = spo2.get(d)
+            temp_dev = (skin_temp.get(d) or {}).get("deviation")
+
+            row_data = [
+                str(d),
+                str(round(rec_val)) if rec_val is not None else "",
+                str(round(sleep_h, 2)) if sleep_h is not None else "",
+                str(round(sleep_need, 2)) if sleep_need is not None else "",
+                str(round(sleep_debt, 2)) if sleep_debt is not None else "",
+                str(step_val) if step_val is not None else "",
+                str(round(dist_val, 2)) if dist_val is not None else "",
+                str(round(rhr_val)) if rhr_val is not None else "",
+                str(round(hrv_val)) if hrv_val is not None else "",
+                str(round(resp_val, 1)) if resp_val is not None else "",
+                str(round(spo2_val, 1)) if spo2_val is not None else "",
+                str(round(temp_dev, 3)) if temp_dev is not None else "",
+                str(round(active_cal)) if active_cal is not None else "",
+                str(round(strain_val)) if strain_val is not None else "",
+            ]
+
+            if d in date_to_row:
+                # Update existing row
+                row_num = date_to_row[d]
+                sheet.values().update(
+                    spreadsheetId=spreadsheet_id,
+                    range=f"Sheet1!A{row_num}:N{row_num}",
+                    valueInputOption="USER_ENTERED",
+                    body={"values": [row_data]},
+                ).execute()
+            else:
+                # Append new row
+                sheet.values().append(
+                    spreadsheetId=spreadsheet_id,
+                    range="Sheet1!A1",
+                    valueInputOption="USER_ENTERED",
+                    body={"values": [row_data]},
+                ).execute()
+        print(f"[Sheets Sync] Successfully synced last 14 days to Google Sheet.")
+    except Exception as e:
+        print(f"[Sheets Sync] Error syncing to Google Sheets: {e}")
+
+
 
 
 def parse_raw(raw: dict) -> dict:

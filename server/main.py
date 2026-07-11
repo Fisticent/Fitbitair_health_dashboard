@@ -916,6 +916,22 @@ def refresh(
         raise
     except Exception as e:
         raise HTTPException(502, f"Erreur synchronisation: {e}") from e
+@app.get("/api/public/sync-sheets")
+def public_sync_sheets(key: str | None = None):
+    import os
+    expected_key = os.environ.get("SHEETS_SYNC_KEY")
+    if expected_key and key != expected_key:
+        raise HTTPException(status_code=403, detail="Clé de synchronisation invalide")
+
+    def _force_sync():
+        try:
+            print("[Public Sync] Starting forced sheets sync...")
+            fetch_raw(force=True)
+        except Exception as e:
+            print(f"[Public Sync] Error: {e}")
+
+    threading.Thread(target=_force_sync, name="public-sheets-sync", daemon=True).start()
+    return {"status": "sync_triggered"}
 
 
 if __name__ == "__main__":

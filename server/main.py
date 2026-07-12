@@ -343,8 +343,10 @@ def _sync_to_sheets(raw_data: dict) -> dict:
         from google.oauth2 import service_account
         import google.auth.transport.requests
 
-        # Load credentials from service account JSON string
-        creds_dict = json.loads(sa_json)
+        # Load credentials from service account JSON string. strict=False allows the raw
+        # control characters (literal newlines in the PEM private_key) that Render's env
+        # var UI leaves unescaped when the JSON is pasted in as a single-line value.
+        creds_dict = json.loads(sa_json, strict=False)
         SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
         creds = service_account.Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
 

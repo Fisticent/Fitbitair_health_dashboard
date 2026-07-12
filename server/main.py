@@ -395,7 +395,7 @@ def _sync_to_sheets(raw_data: dict) -> None:
                 sleep_h = sleep_row.get("hours")
                 sleep_debt = sleep_row.get("debt_hours")
             except Exception:
-                sleep_h, sleep_need, sleep_debt = None, None, None
+                sleep_row, sleep_h, sleep_need, sleep_debt = None, None, None, None
 
             step_val = steps.get(d)
             dist_val = distance.get(d)
@@ -433,6 +433,23 @@ def _sync_to_sheets(raw_data: dict) -> None:
             except Exception:
                 stress_val = None
 
+            # Sleep detailed stages
+            deep_min = sleep_row.get("stages", {}).get("deep_min") if sleep_row else None
+            rem_min = sleep_row.get("stages", {}).get("rem_min") if sleep_row else None
+            light_min = sleep_row.get("stages", {}).get("light_min") if sleep_row else None
+            awake_min = sleep_row.get("stages", {}).get("awake_min") if sleep_row else None
+
+            # Absolute skin temp
+            temp_abs = (skin_temp.get(d) or {}).get("nightly")
+
+            # Active Zone Minutes and Heart Rate Zones
+            az_d = zones.get(d) or {}
+            azm_val = az_d.get("minutes", 0)
+            fb_val = az_d.get("fat_burn", 0)
+            cardio_val = az_d.get("cardio", 0)
+            peak_val = az_d.get("peak", 0)
+            out_of_range_val = 1440 - fb_val - cardio_val - peak_val
+
             row_data = [
                 str(d),
                 str(round(rec_val)) if rec_val is not None else "",
@@ -456,6 +473,16 @@ def _sync_to_sheets(raw_data: dict) -> None:
                 str(ex_mins) if ex_mins > 0 else "",
                 str(ex_count) if ex_count > 0 else "",
                 str(round(stress_val)) if stress_val is not None else "",
+                str(round(deep_min)) if deep_min is not None else "",
+                str(round(rem_min)) if rem_min is not None else "",
+                str(round(light_min)) if light_min is not None else "",
+                str(round(awake_min)) if awake_min is not None else "",
+                str(round(temp_abs, 2)) if temp_abs is not None else "",
+                str(round(azm_val)) if azm_val is not None else "",
+                str(round(fb_val)) if fb_val is not None else "",
+                str(round(cardio_val)) if cardio_val is not None else "",
+                str(round(peak_val)) if peak_val is not None else "",
+                str(round(out_of_range_val)) if out_of_range_val is not None else "",
             ]
 
             rows_by_date[d] = row_data
@@ -467,7 +494,7 @@ def _sync_to_sheets(raw_data: dict) -> None:
         # Overwrite the spreadsheet data block starting at row 2
         sheet.values().update(
             spreadsheetId=spreadsheet_id,
-            range=f"Sheet1!A2:V{len(sorted_rows) + 1}",
+            range=f"Sheet1!A2:AF{len(sorted_rows) + 1}",
             valueInputOption="USER_ENTERED",
             body={"values": sorted_rows}
         ).execute()

@@ -655,23 +655,10 @@ def compute_stress_proxy(
     strain_by_day: dict[str, float] | None = None,
     skin_temp: dict[str, dict] | None = None,
 ) -> dict[str, Any]:
-    """Relative acute-stress index from autonomic signals vs the person's own
-    baseline — the "Daytime Stress" / "Responsiveness" layer of Oura/Whoop/Fitbit.
+    """Relative acute-stress index from autonomic signals vs the person's own baseline.
 
-    Combines up to three signals, each z-scored against the prior ~14 days so the
-    index means *unusual for you today* rather than flagging normal physiology:
-      • HRV depression (primary, weight 0.6) — z-scored on ``ln(HRV)`` (lnRMSSD,
-        like WHOOP) for stable day-to-day comparison; stress rises as HRV falls.
-      • HR elevation (0.4) — daytime-HR-over-resting when daytime average HR is
-        available; otherwise a fallback on resting-HR deviation from baseline
-        (daytime HR is missing on much older history). Damped by today's strain
-        so a workout isn't misread as stress (motion compensation).
-      • Nightly skin-temperature deviation from baseline (0.2) — warmer than your
-        baseline = stress/illness/strain, the third core signal Oura/Whoop use.
-    A logistic squashes the combined z into 0–100, so a clearly elevated day
-    lands ~70 (Élevé) instead of pegging at 100 (the old linear 50+20·z hit the
-    ceiling at z≥2.5). Higher = more stress. The long-term/chronic layer lives
-    separately in ``health_monitor`` (HRV drift), mirroring Oura's split.
+    If daytime average heart rate (hr_avg) is missing (common for older history due to density),
+    it falls back to using the resting heart rate (RHR) deviation from baseline.
     """
     baseline = rhr.get(day)
     if not baseline:
@@ -774,8 +761,7 @@ def compute_stress_proxy(
         status = "calibrating"
         baseline_pct = None
     else:
-        # No signal at all yet (no daytime HR, no HRV/temp baseline): stay
-        # neutral rather than invent a number, and flag it as calibrating.
+        # Fallback to neutral score when no baseline history can be computed
         score = 50
         label, level = "Modéré", "medium"
         basis = "absolute"

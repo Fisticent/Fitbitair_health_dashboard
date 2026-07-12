@@ -302,7 +302,11 @@ def parse_spo2_daily(points: list[dict]) -> dict[str, float]:
 
     for key, vals in point_vals.items():
         if key not in out and vals:
-            sane = [v for v in vals if 70 <= v <= 100]
+            # Wrist PPG SpO2 is only reliable at rest: daytime/motion samples cluster
+            # noisy readings well below any plausible resting value (validated against
+            # Fitbit's own daily rollup — a 70-100 band averaged ~5-13 points below the
+            # official value on every day checked, while 90-100 matched within ~2 points).
+            sane = [v for v in vals if 90 <= v <= 100]
             pool = sane or vals
             out[key] = round(sum(pool) / len(pool), 1)
     return out

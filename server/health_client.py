@@ -232,6 +232,20 @@ def list_recent_heart_rate_points(days: int = 90, max_pages: int = 15) -> list[d
     return list_data_points("heart-rate", max_pages=min(max_pages, 6))
 
 
+def list_recent_oxygen_saturation_points(days: int = 30, max_pages: int = 20) -> list[dict]:
+    """SpO2 samples — the API rejects the date filter for this type (400 INVALID_DATA_POINT_FILTER),
+    so this always falls back to unfiltered pagination. At ~350-500 samples/day, max_pages=20
+    (10k points) comfortably covers the 15-day sync window with margin; raise it if that window grows.
+    """
+    filt = sample_time_filter("oxygen-saturation", days)
+    try:
+        return list_data_points("oxygen-saturation", max_pages=max_pages, filter=filt)
+    except requests.HTTPError as exc:
+        if exc.response is None or exc.response.status_code != 400:
+            raise
+    return list_data_points("oxygen-saturation", max_pages=max_pages)
+
+
 def list_recent_data_points(
     data_type: str, days: int = 90, page_size: int | None = None, max_pages: int = 20
 ) -> list[dict]:

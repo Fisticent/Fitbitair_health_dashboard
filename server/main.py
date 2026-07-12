@@ -215,7 +215,7 @@ def _refresh_in_background() -> None:
 
     def _run() -> None:
         try:
-            _fetch_raw_locked()
+            _fetch_raw_locked(sync_sheets=True)
         except Exception:
             pass  # errors are captured into _fetch_errors by the fetch itself
         finally:
@@ -224,7 +224,7 @@ def _refresh_in_background() -> None:
     threading.Thread(target=_run, name="raw-refresh", daemon=True).start()
 
 
-def fetch_raw(force: bool = False) -> dict:
+def fetch_raw(force: bool = False, sync_sheets: bool = True) -> dict:
     global _raw_cache, _synced_at, _fetch_errors, _cache_built_at
 
     if not force and _cache_fresh():
@@ -241,10 +241,10 @@ def fetch_raw(force: bool = False) -> dict:
         # Re-check: another thread may have populated the cache while we waited.
         if not force and _cache_fresh():
             return _raw_cache  # type: ignore[return-value]
-        return _fetch_raw_locked()
+        return _fetch_raw_locked(sync_sheets=sync_sheets)
 
 
-def _fetch_raw_locked() -> dict:
+def _fetch_raw_locked(sync_sheets: bool = True) -> dict:
     global _raw_cache, _synced_at, _fetch_errors, _cache_built_at
 
     errors: list[str] = []
@@ -285,8 +285,12 @@ def _fetch_raw_locked() -> dict:
         "exercise_pts": ("exercise", lambda: hc.list_recent_data_points("exercise", days=90, max_pages=20)),
         "active_energy_pts": ("active-energy", lambda: hc.list_recent_data_points("active-energy-burned", days=90, max_pages=20)),
         "body_fat_pts": ("body-fat", lambda: hc.list_data_points_optional("body-fat", max_pages=3)),
+        # daily-oxygen-saturation is the official Fitbit rollup (more accurate where present)
+        # but is itself sparse/incomplete — concatenate the raw samples so parse_spo2_daily's
+        # per-day merge (rollup preferred, raw-sample average as fallback) fills the gaps
+        # instead of an `or` that skips raw samples entirely whenever the rollup is non-empty.
         "spo2_pts": ("spo2", lambda: hc.list_data_points_optional("daily-oxygen-saturation", max_pages=3)
-                     or hc.list_data_points_optional("oxygen-saturation", max_pages=5)),
+                     + hc.list_recent_oxygen_saturation_points(days=30, max_pages=20)),
     }
 
     results: dict[str, object] = {"profile": profile}
@@ -304,7 +308,11 @@ def _fetch_raw_locked() -> dict:
     _cache_built_at = time.monotonic()
 
     # Trigger sheets sync in the background if service account is configured
-    _trigger_sheets_sync_bg(results)
+    if sync_sheets:
+        _trigger_sheets_sync_bg(results)
+
+    import gc
+    gc.collect()
 
     return _raw_cache
 
@@ -319,26 +327,36 @@ def _trigger_sheets_sync_bg(raw_data: dict) -> None:
     threading.Thread(target=_run, name="sheets-sync", daemon=True).start()
 
 
-def _sync_to_sheets(raw_data: dict) -> None:
+def _sync_to_sheets(raw_data: dict) -> dict:
     import os
     import json
+    import gc
+    import requests
 
     sa_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
     spreadsheet_id = os.environ.get("GOOGLE_SPREADSHEET_ID")
     if not sa_json or not spreadsheet_id:
-        return
+        return {"status": "skipped", "reason": "Environment variables not configured"}
 
     print("[Sheets Sync] Sync triggered...")
     try:
         from google.oauth2 import service_account
-        from googleapiclient.discovery import build
+        import google.auth.transport.requests
 
         # Load credentials from service account JSON string
         creds_dict = json.loads(sa_json)
         SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
         creds = service_account.Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-        service = build("sheets", "v4", credentials=creds, cache_discovery=False)
-        sheet = service.spreadsheets()
+
+        # Authenticate and refresh token
+        auth_req = google.auth.transport.requests.Request()
+        creds.refresh(auth_req)
+        access_token = creds.token
+
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        }
 
         # 1. Parse raw data
         parsed = parse_raw(raw_data)
@@ -361,9 +379,13 @@ def _sync_to_sheets(raw_data: dict) -> None:
         age = _derive_age(google_profile)
         sex = _derive_sex(google_profile)
 
-        # Get existing data rows starting from row 2 (excluding header)
-        res = sheet.values().get(spreadsheetId=spreadsheet_id, range="Sheet1!A2:V").execute()
-        existing_rows = res.get("values", [])
+        # Get existing data rows starting from row 2 (excluding header) via direct REST GET
+        res = requests.get(
+            f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}/values/Sheet1!A2:AF",
+            headers=headers,
+        )
+        res.raise_for_status()
+        existing_rows = res.json().get("values", [])
         rows_by_date = {row[0]: row for row in existing_rows if len(row) > 0}
 
         # Sync the last 14 days
@@ -491,16 +513,26 @@ def _sync_to_sheets(raw_data: dict) -> None:
         sorted_dates = sorted(rows_by_date.keys(), reverse=True)
         sorted_rows = [rows_by_date[d] for d in sorted_dates]
 
-        # Overwrite the spreadsheet data block starting at row 2
-        sheet.values().update(
-            spreadsheetId=spreadsheet_id,
-            range=f"Sheet1!A2:AF{len(sorted_rows) + 1}",
-            valueInputOption="USER_ENTERED",
-            body={"values": sorted_rows}
-        ).execute()
+        # Overwrite the spreadsheet data block starting at row 2 via direct REST PUT
+        write_res = requests.put(
+            f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}/values/Sheet1!A2:AF{len(sorted_rows) + 1}",
+            params={"valueInputOption": "USER_ENTERED"},
+            headers=headers,
+            json={
+                "range": f"Sheet1!A2:AF{len(sorted_rows) + 1}",
+                "majorDimension": "ROWS",
+                "values": sorted_rows,
+            },
+        )
+        write_res.raise_for_status()
         print(f"[Sheets Sync] Successfully synced last 14 days to Google Sheet.")
+        return {"status": "success", "synced_dates": sync_dates, "spreadsheet_id": spreadsheet_id}
     except Exception as e:
         print(f"[Sheets Sync] Error syncing to Google Sheets: {e}")
+        return {"status": "error", "error": str(e)}
+    finally:
+        # Force garbage collection to free memory on Render free tier (512MB RAM)
+        gc.collect()
 
 
 
@@ -950,15 +982,14 @@ def public_sync_sheets(key: str | None = None):
     if expected_key and key != expected_key:
         raise HTTPException(status_code=403, detail="Clé de synchronisation invalide")
 
-    def _force_sync():
-        try:
-            print("[Public Sync] Starting forced sheets sync...")
-            fetch_raw(force=True)
-        except Exception as e:
-            print(f"[Public Sync] Error: {e}")
-
-    threading.Thread(target=_force_sync, name="public-sheets-sync", daemon=True).start()
-    return {"status": "sync_triggered"}
+    try:
+        print("[Public Sync] Starting forced sheets sync...")
+        # Fetch raw data forcing refresh, but skip background sync to avoid double work
+        raw_data = fetch_raw(force=True, sync_sheets=False)
+        result = _sync_to_sheets(raw_data)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

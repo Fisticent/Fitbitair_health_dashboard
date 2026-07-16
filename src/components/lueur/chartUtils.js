@@ -216,8 +216,18 @@ export function pctFromZ(z) {
   return Math.max(0, Math.min(100, Math.round(100 * 0.5 * (1 + erf(z / Math.sqrt(2))))));
 }
 
+/**
+ * Contributor z is oriented so positive = better than your recent baseline
+ * (see strainRecoveryZ / recovery.components). Unlike scoreStatusLabel
+ * (which classifies an absolute 0-100 score), z=0 means "right at your own
+ * median" and should read as "Bon", not a warning — a normal day isn't an
+ * anomaly. Only a meaningful *below-baseline* deviation should warn.
+ */
 export function recoveryContributorStatus(z) {
-  return scoreStatusLabel(pctFromZ(z));
+  if (z == null || Number.isNaN(z)) return { text: "—", color: COLORS.GREY };
+  if (z >= 1) return { text: "Optimal", color: COLORS.TEAL };
+  if (z >= -0.5) return { text: "Bon", color: COLORS.BLUE };
+  return { text: "À surveiller", color: COLORS.CORAL };
 }
 
 export function scoreStatusLabel(pct) {

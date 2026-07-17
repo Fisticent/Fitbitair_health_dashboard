@@ -327,7 +327,7 @@ def _trigger_sheets_sync_bg(raw_data: dict) -> None:
     threading.Thread(target=_run, name="sheets-sync", daemon=True).start()
 
 
-def _sync_to_sheets(raw_data: dict) -> dict:
+def _sync_to_sheets(raw_data: dict, days: int = 2) -> dict:
     import os
     import json
     import gc
@@ -395,11 +395,13 @@ def _sync_to_sheets(raw_data: dict) -> dict:
         existing_rows = res.json().get("values", [])
         rows_by_date = {row[0]: row for row in existing_rows if len(row) > 0}
 
-        # This runs on a daily Apps Script trigger, so 2 days (today + a
-        # 1-day cushion for a missed/late run) is enough to stay caught up
-        # without recomputing/writing the full history every time.
+        # This runs on a daily Apps Script trigger, so the default 2 days
+        # (today + a 1-day cushion for a missed/late run) is enough to stay
+        # caught up without recomputing/writing the full history every time.
+        # `days` can be widened for a one-off backfill (e.g. via ?days=N on
+        # /api/public/sync-sheets) without touching that default.
         today = date_type.today()
-        sync_dates = sorted([(today - timedelta(days=i)).isoformat() for i in range(2)])
+        sync_dates = sorted([(today - timedelta(days=i)).isoformat() for i in range(days)])
 
         # Strain needs one extra day of lookback so "prior day's strain" for
         # the oldest synced date isn't silently missing.
@@ -992,17 +994,18 @@ def refresh(
     except Exception as e:
         raise HTTPException(502, f"Erreur synchronisation: {e}") from e
 @app.get("/api/public/sync-sheets")
-def public_sync_sheets(key: str | None = None):
+def public_sync_sheets(key: str | None = None, days: int = 2):
     import os
     expected_key = os.environ.get("SHEETS_SYNC_KEY")
     if expected_key and key != expected_key:
         raise HTTPException(status_code=403, detail="Clé de synchronisation invalide")
+    days = max(1, min(days, 90))
 
     try:
-        print("[Public Sync] Starting forced sheets sync...")
+        print(f"[Public Sync] Starting forced sheets sync (days={days})...")
         # Fetch raw data forcing refresh, but skip background sync to avoid double work
         raw_data = fetch_raw(force=True, sync_sheets=False)
-        result = _sync_to_sheets(raw_data)
+        result = _sync_to_sheets(raw_data, days=days)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -388,7 +388,7 @@ def _sync_to_sheets(raw_data: dict) -> dict:
 
         # Get existing data rows starting from row 2 (excluding header) via direct REST GET
         res = requests.get(
-            f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}/values/Sheet1!A2:AF",
+            f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}/values/Sheet1!A2:AG",
             headers=headers,
         )
         res.raise_for_status()
@@ -455,6 +455,7 @@ def _sync_to_sheets(raw_data: dict) -> dict:
             ex_d = exercise.get(d, {})
             ex_mins = ex_d.get("minutes", 0)
             ex_count = ex_d.get("count", 0)
+            ex_types = ", ".join(sorted((ex_d.get("types") or {}).keys()))
 
             # Stress
             try:
@@ -501,6 +502,9 @@ def _sync_to_sheets(raw_data: dict) -> dict:
                 str(round(vo2_val, 1)) if vo2_val is not None else "",
                 str(ex_mins) if ex_mins > 0 else "",
                 str(ex_count) if ex_count > 0 else "",
+                # Sheet column V ("Types de seances") sits here, between Nombre
+                # de seances and Score de Stress — not at the end of the row.
+                ex_types,
                 str(round(stress_val)) if stress_val is not None else "",
                 str(round(deep_min)) if deep_min is not None else "",
                 str(round(rem_min)) if rem_min is not None else "",
@@ -522,11 +526,11 @@ def _sync_to_sheets(raw_data: dict) -> dict:
 
         # Overwrite the spreadsheet data block starting at row 2 via direct REST PUT
         write_res = requests.put(
-            f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}/values/Sheet1!A2:AF{len(sorted_rows) + 1}",
+            f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}/values/Sheet1!A2:AG{len(sorted_rows) + 1}",
             params={"valueInputOption": "USER_ENTERED"},
             headers=headers,
             json={
-                "range": f"Sheet1!A2:AF{len(sorted_rows) + 1}",
+                "range": f"Sheet1!A2:AG{len(sorted_rows) + 1}",
                 "majorDimension": "ROWS",
                 "values": sorted_rows,
             },

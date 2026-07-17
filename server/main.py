@@ -395,13 +395,18 @@ def _sync_to_sheets(raw_data: dict) -> dict:
         existing_rows = res.json().get("values", [])
         rows_by_date = {row[0]: row for row in existing_rows if len(row) > 0}
 
-        # Sync the last 14 days
+        # This runs on a daily Apps Script trigger, so 2 days (today + a
+        # 1-day cushion for a missed/late run) is enough to stay caught up
+        # without recomputing/writing the full history every time.
         today = date_type.today()
-        sync_dates = sorted([(today - timedelta(days=i)).isoformat() for i in range(15)])
+        sync_dates = sorted([(today - timedelta(days=i)).isoformat() for i in range(2)])
 
+        # Strain needs one extra day of lookback so "prior day's strain" for
+        # the oldest synced date isn't silently missing.
         strain_kw = _strain_ctx(parsed)
         strain_by_day = {}
-        for d in sync_dates:
+        for i in range(len(sync_dates) + 1):
+            d = (today - timedelta(days=i)).isoformat()
             try:
                 strain_by_day[d] = s.compute_strain(d, zones, **strain_kw)["score"]
             except Exception:
@@ -536,7 +541,7 @@ def _sync_to_sheets(raw_data: dict) -> dict:
             },
         )
         write_res.raise_for_status()
-        print(f"[Sheets Sync] Successfully synced last 14 days to Google Sheet.")
+        print(f"[Sheets Sync] Successfully synced {sync_dates} to Google Sheet.")
         return {"status": "success", "synced_dates": sync_dates, "spreadsheet_id": spreadsheet_id}
     except Exception as e:
         print(f"[Sheets Sync] Error syncing to Google Sheets: {e}")

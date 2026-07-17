@@ -36,10 +36,12 @@ function monitorDeltaUnit(unit) {
 }
 
 function formatDeltaCell(metric) {
-  const { value, baseline, unit, name } = metric;
+  const { value, baseline, unit, name, delta: rawDelta } = metric;
   if (value == null || baseline == null) return "—";
 
-  const delta = value - baseline;
+  // Use the backend's unrounded delta when available so this never contradicts
+  // the status badge (rounding value/baseline separately can hide a real gap).
+  const delta = rawDelta != null ? rawDelta : value - baseline;
   const pct = baseline ? Math.round((delta / baseline) * 100) : 0;
   const sign = delta >= 0 ? "+" : "";
 
@@ -110,7 +112,7 @@ export function HealthMonitorPanel({ metrics }) {
             Moniteur santé
           </LueurMetricLabel>
           <p className="lueur-meta lueur-monitor-table-sub">
-            Vitaux vs ta moyenne personnelle · 30 jours
+            Vitaux vs ta médiane personnelle · 30 jours
           </p>
         </div>
         <p className="lueur-monitor-table-summary">
@@ -127,7 +129,7 @@ export function HealthMonitorPanel({ metrics }) {
             <tr>
               <th scope="col">Indicateur</th>
               <th scope="col">Valeur</th>
-              <th scope="col">Moy. 30j</th>
+              <th scope="col">Médiane 30j</th>
               <th scope="col">Écart</th>
               <th scope="col">Position vs norme</th>
               <th scope="col">Statut</th>
@@ -148,7 +150,7 @@ export function HealthMonitorPanel({ metrics }) {
         </span>
         <span className="lueur-monitor-legend-item">
           <span className="lueur-monitor-legend-avg" />
-          ta moyenne
+          ta médiane
         </span>
         <span className="lueur-monitor-legend-item">
           <span className="lueur-monitor-legend-dot" />

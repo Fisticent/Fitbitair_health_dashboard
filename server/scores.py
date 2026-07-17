@@ -383,7 +383,8 @@ def health_monitor(
         # low O₂ only), so an unusually high reading never trips a warning.
         risk = max(0.0, -z) if low_only else abs(z)
         status = "normal" if risk < 1 else "warning" if risk < 2 else "alert"
-        baseline = round(statistics.median(hist_vals), 1) if hist_vals else _display_metric(name, val)
+        baseline_raw = statistics.median(hist_vals) if hist_vals else val
+        baseline = round(baseline_raw, 1) if hist_vals else _display_metric(name, val)
         return {
             "name": name,
             "value": _display_metric(name, val),
@@ -391,6 +392,10 @@ def health_monitor(
             "baseline": baseline,
             "status": status,
             "z": round(z, 2),
+            # Rounded value/baseline can subtract to "+0" even when the z-score
+            # (computed on raw values) is large enough to warn — carry the true
+            # unrounded gap so the UI's delta column never contradicts the badge.
+            "delta": round(val - baseline_raw, 2) if hist_vals else 0.0,
         }
 
     for item in [

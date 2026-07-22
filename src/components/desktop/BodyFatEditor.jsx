@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { MetricLabel } from "./InfoTip";
 
 export function BodyFatEditor({
@@ -14,6 +14,7 @@ export function BodyFatEditor({
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
+  const inputId = useId();
 
   const startEdit = () => {
     setDraft(value != null ? String(value) : "");
@@ -37,14 +38,21 @@ export function BodyFatEditor({
             Masse grasse
           </MetricLabel>
         )}
+        {hideLabel && (
+          <label htmlFor={inputId} className="lueur-sr-only">
+            Masse grasse (%)
+          </label>
+        )}
         <div className="body-fat-input-row">
           <input
+            id={inputId}
             type="number"
             className="body-fat-input"
             min={3}
             max={60}
             step={0.1}
             placeholder="ex. 18.5"
+            aria-label={hideLabel ? undefined : "Masse grasse (%)"}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
@@ -53,7 +61,9 @@ export function BodyFatEditor({
             }}
             autoFocus
           />
-          <span className="body-fat-unit">%</span>
+          <span className="body-fat-unit" aria-hidden="true">
+            %
+          </span>
           <button type="button" className="body-fat-btn" onClick={commit}>
             OK
           </button>
@@ -88,7 +98,7 @@ export function BodyFatEditor({
         </span>
       )}
       <button type="button" className="body-fat-edit-link" onClick={startEdit}>
-        {value != null ? "Modifier" : "Saisir manuellement"}
+        {value != null ? "modifier" : "Saisir manuellement"}
       </button>
     </div>
   );

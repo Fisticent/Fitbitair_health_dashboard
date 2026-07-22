@@ -4,12 +4,6 @@ import { MONITOR_STATUS } from "../../utils/metricStatus";
 import { zoneColor } from "./chartUtils";
 import { VitalPositionBar } from "./VitalPositionBar";
 
-const ROW_STATUS = {
-  normal: "normal",
-  warning: "warning",
-  alert: "alert",
-};
-
 const BADGE_CLASS = {
   green: "green",
   yellow: "yellow",
@@ -39,8 +33,6 @@ function formatDeltaCell(metric) {
   const { value, baseline, unit, name, delta: rawDelta } = metric;
   if (value == null || baseline == null) return "—";
 
-  // Use the backend's unrounded delta when available so this never contradicts
-  // the status badge (rounding value/baseline separately can hide a real gap).
   const delta = rawDelta != null ? rawDelta : value - baseline;
   const pct = baseline ? Math.round((delta / baseline) * 100) : 0;
   const sign = delta >= 0 ? "+" : "";
@@ -48,16 +40,16 @@ function formatDeltaCell(metric) {
   return `${sign}${formatDeltaAbs(name, delta)}${monitorDeltaUnit(unit)} (${sign}${pct}%)`;
 }
 
-function MonitorRow({ metric }) {
+function MonitorMetric({ metric }) {
   const { name, value, unit, baseline, status } = metric;
   const monitorStatus = MONITOR_STATUS[status] || MONITOR_STATUS.normal;
   const tipId = monitorTipId(name);
   const displayUnit = unit === "/min" ? "/min" : unit;
-  const rowClass = ROW_STATUS[status] || "normal";
+  const tone = status === "alert" ? "alert" : status === "warning" ? "warning" : "normal";
 
   return (
-    <tr className={`lueur-monitor-row lueur-monitor-row--${rowClass}`}>
-      <td className="lueur-monitor-cell lueur-monitor-cell--name">
+    <article className={`lueur-monitor-metric lueur-monitor-metric--${tone}`}>
+      <header className="lueur-monitor-metric-head">
         <div className="lueur-monitor-name-wrap">
           <span
             className="lueur-monitor-dot"
@@ -65,35 +57,42 @@ function MonitorRow({ metric }) {
             aria-hidden="true"
           />
           {tipId ? (
-            <LueurMetricLabel id={tipId} as="span" className="lueur-monitor-name">
+            <LueurMetricLabel id={tipId} as="h3" className="lueur-monitor-name">
               {name}
             </LueurMetricLabel>
           ) : (
-            <span className="lueur-monitor-name">{name}</span>
+            <h3 className="lueur-monitor-name">{name}</h3>
           )}
         </div>
-      </td>
-      <td className="lueur-monitor-cell lueur-monitor-cell--value">
-        <span className="lueur-monitor-value">{formatMetricValue(name, value)}</span>
-        {value != null && displayUnit && (
-          <span className="lueur-monitor-unit">{displayUnit}</span>
-        )}
-      </td>
-      <td className="lueur-monitor-cell lueur-monitor-cell--avg">
-        {baseline != null ? formatMetricValue(name, baseline) : "—"}
-      </td>
-      <td className="lueur-monitor-cell lueur-monitor-cell--delta">{formatDeltaCell(metric)}</td>
-      <td className="lueur-monitor-cell lueur-monitor-cell--pos">
-        <VitalPositionBar metric={metric} statusZone={monitorStatus.zone} />
-      </td>
-      <td className="lueur-monitor-cell lueur-monitor-cell--status">
         <span
           className={`lueur-stat-badge lueur-stat-badge--${BADGE_CLASS[monitorStatus.zone] || "neutral"}`}
         >
           {monitorStatus.label}
         </span>
-      </td>
-    </tr>
+      </header>
+
+      <div className="lueur-monitor-metric-body">
+        <div className="lueur-monitor-metric-values">
+          <p className="lueur-monitor-metric-primary">
+            <span className="lueur-monitor-value">{formatMetricValue(name, value)}</span>
+            {value != null && displayUnit && (
+              <span className="lueur-monitor-unit">{displayUnit}</span>
+            )}
+          </p>
+          <p className="lueur-monitor-metric-meta">
+            médiane 30 j{" "}
+            <strong>{baseline != null ? formatMetricValue(name, baseline) : "—"}</strong>
+            <span className="lueur-monitor-metric-sep" aria-hidden="true">
+              ·
+            </span>
+            <span>{formatDeltaCell(metric)}</span>
+          </p>
+        </div>
+        <div className="lueur-monitor-metric-bar">
+          <VitalPositionBar metric={metric} statusZone={monitorStatus.zone} />
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -105,7 +104,7 @@ export function HealthMonitorPanel({ metrics }) {
   const normalCount = metrics.filter((m) => m.status === "normal").length;
 
   return (
-    <div className="lueur-monitor-table-block">
+    <div className="lueur-monitor-panel">
       <div className="lueur-monitor-table-head">
         <div>
           <LueurMetricLabel id="health_monitor" as="p" className="lueur-label lueur-card-section-label">
@@ -123,24 +122,12 @@ export function HealthMonitorPanel({ metrics }) {
         </p>
       </div>
 
-      <div className="lueur-monitor-table-wrap">
-        <table className="lueur-monitor-table">
-          <thead>
-            <tr>
-              <th scope="col">Indicateur</th>
-              <th scope="col">Valeur</th>
-              <th scope="col">Médiane 30j</th>
-              <th scope="col">Écart</th>
-              <th scope="col">Position vs norme</th>
-              <th scope="col">Statut</th>
-            </tr>
-          </thead>
-          <tbody>
-            {metrics.map((m) => (
-              <MonitorRow key={m.name} metric={m} />
-            ))}
-          </tbody>
-        </table>
+      <div className="lueur-monitor-list" role="list">
+        {metrics.map((m) => (
+          <div key={m.name} role="listitem">
+            <MonitorMetric metric={m} />
+          </div>
+        ))}
       </div>
 
       <div className="lueur-monitor-legend" aria-hidden="true">

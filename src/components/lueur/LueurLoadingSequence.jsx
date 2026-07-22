@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
+import { useMotionSafe } from "../../hooks/useMotionSafe";
 
 // Premium "data streaming in" sequence shown while the first dashboard loads.
 // Steps light up one at a time; the last one keeps spinning until real data
@@ -13,7 +14,7 @@ const STEPS = [
   "Préparation du tableau de bord",
 ];
 
-function CheckMark() {
+function CheckMark({ reduce }) {
   return (
     <motion.svg viewBox="0 0 24 24" className="lueur-loading-check" aria-hidden="true">
       <motion.path
@@ -23,9 +24,9 @@ function CheckMark() {
         strokeWidth="2.6"
         strokeLinecap="round"
         strokeLinejoin="round"
-        initial={{ pathLength: 0 }}
+        initial={reduce ? false : { pathLength: 0 }}
         animate={{ pathLength: 1 }}
-        transition={{ duration: 0.32, ease: "easeOut" }}
+        transition={reduce ? { duration: 0 } : { duration: 0.32, ease: "easeOut" }}
       />
     </motion.svg>
   );
@@ -33,8 +34,13 @@ function CheckMark() {
 
 export function LueurLoadingSequence({ subtitle }) {
   const [active, setActive] = useState(0);
+  const { reduce } = useMotionSafe();
 
   useEffect(() => {
+    if (reduce) {
+      setActive(STEPS.length - 1);
+      return undefined;
+    }
     let i = 0;
     let timer;
     const schedule = () => {
@@ -46,7 +52,7 @@ export function LueurLoadingSequence({ subtitle }) {
     };
     schedule();
     return () => clearTimeout(timer);
-  }, []);
+  }, [reduce]);
 
   // Hold below 100% — the data isn't truly "done" until the view swaps in.
   const progress = Math.min(94, Math.round(((active + 0.6) / STEPS.length) * 100));
@@ -69,12 +75,12 @@ export function LueurLoadingSequence({ subtitle }) {
               <motion.div
                 key={label}
                 className={`lueur-loading-step ${done ? "is-done" : "is-active"}`}
-                initial={{ opacity: 0, y: 8 }}
+                initial={reduce ? false : { opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                transition={reduce ? { duration: 0 } : { duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
               >
                 <span className="lueur-loading-icon">
-                  {done ? <CheckMark /> : <span className="lueur-loading-spinner" />}
+                  {done ? <CheckMark reduce={reduce} /> : <span className="lueur-loading-spinner" />}
                 </span>
                 <span className="lueur-loading-label">{label}</span>
               </motion.div>
@@ -85,9 +91,9 @@ export function LueurLoadingSequence({ subtitle }) {
         <div className="lueur-loading-bar">
           <motion.div
             className="lueur-loading-bar-fill"
-            initial={{ width: "6%" }}
+            initial={reduce ? false : { width: "6%" }}
             animate={{ width: `${progress}%` }}
-            transition={{ duration: 0.6, ease: "easeOut" }}
+            transition={reduce ? { duration: 0 } : { duration: 0.6, ease: "easeOut" }}
           />
         </div>
 

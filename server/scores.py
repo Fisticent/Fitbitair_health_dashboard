@@ -943,6 +943,8 @@ def compute_pace_of_aging(
     if len(pts) < min_points or span_days < min_span_days:
         return {
             "pace_years_per_year": None,
+            "pace_raw_years_per_year": None,
+            "pace_clamped": False,
             "label": "En calibrage",
             "status": "calibrating",
             "confidence": "low",
@@ -962,6 +964,8 @@ def compute_pace_of_aging(
     if not slopes:
         return {
             "pace_years_per_year": None,
+            "pace_raw_years_per_year": None,
+            "pace_clamped": False,
             "label": "En calibrage",
             "status": "calibrating",
             "confidence": "low",
@@ -979,11 +983,15 @@ def compute_pace_of_aging(
     sx = statistics.pstdev([x for x, _ in pts]) or 1.0
     se = sigma / (sx * len(pts) ** 0.5)
 
-    pace = max(-5.0, min(5.0, round(slope * 365, 2)))
+    pace_raw = slope * 365
+    pace_clamped = abs(pace_raw) > 5
+    pace = max(-5.0, min(5.0, round(pace_raw, 2)))
 
     if abs(slope) < se:  # indistinguishable from zero
         label, confidence = "Stable", "low"
         pace = 0.0  # don't show a number the data can't support
+        pace_clamped = False
+        pace_raw = 0.0
     else:
         snr = abs(slope) / se
         confidence = "high" if (span_days >= 45 and snr >= 2) else "medium"
@@ -996,6 +1004,8 @@ def compute_pace_of_aging(
 
     return {
         "pace_years_per_year": pace,
+        "pace_raw_years_per_year": round(pace_raw, 2),
+        "pace_clamped": pace_clamped,
         "label": label,
         "status": "ok",
         "confidence": confidence,

@@ -14,6 +14,7 @@ import { SyncOverlay } from "./SyncOverlay";
 import { SectionIntentGuide } from "./SectionIntentGuide";
 import { useManualBodyFat, computeLeanMass, useStepsGoal, useCaloriesGoal, useProfileOverrides } from "../../hooks/useManualMetrics";
 import { formatSyncTime, formatDateLong } from "./chartUtils";
+import { useMotionSafe } from "../../hooks/useMotionSafe";
 
 export function LueurDashboard({
   data,
@@ -29,6 +30,7 @@ export function LueurDashboard({
   user,
 }) {
   const [section, setSection] = useState("today");
+  const motionSafe = useMotionSafe();
 
   const {
     focus_date,
@@ -57,8 +59,9 @@ export function LueurDashboard({
     clearBodyFat,
   } = useManualBodyFat(focus_date);
 
-  const bodyFatPct = vitals?.body_fat_pct ?? manualBodyFat;
-  const bodyFatIsManual = vitals?.body_fat_pct == null && manualBodyFat != null;
+  // Manual entry wins over Google sync so "Saisir / modifier" actually updates the UI.
+  const bodyFatPct = manualBodyFat ?? vitals?.body_fat_pct ?? null;
+  const bodyFatIsManual = manualBodyFat != null;
   const leanMassKg = vitals?.lean_mass_kg ?? computeLeanMass(vitals?.weight_kg, bodyFatPct);
 
   const formatShortDate = useCallback((iso) => {
@@ -192,11 +195,11 @@ export function LueurDashboard({
             </div>
           )}
 
-          {section !== "profile" && (
+          {section !== "profile" && section !== "today" && (
             <SectionIntentGuide
               active={section}
               onNavigate={navigate}
-              compact={section !== "today"}
+              compact
             />
           )}
 
@@ -216,10 +219,10 @@ export function LueurDashboard({
           <AnimatePresence mode="wait">
             <motion.div
               key={section}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.25 }}
+              initial={motionSafe.fade.initial}
+              animate={motionSafe.fade.animate}
+              exit={motionSafe.fade.exit}
+              transition={motionSafe.fade.transition}
             >
               {renderView()}
             </motion.div>
@@ -235,9 +238,10 @@ export function LueurDashboard({
         {syncMessage && (
           <motion.div
             className="lueur-sync-toast"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
+            initial={motionSafe.slideUp.initial}
+            animate={motionSafe.slideUp.animate}
+            exit={motionSafe.slideUp.exit}
+            transition={motionSafe.slideUp.transition}
           >
             {syncMessage}
           </motion.div>

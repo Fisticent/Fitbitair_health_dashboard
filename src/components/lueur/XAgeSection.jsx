@@ -1,5 +1,6 @@
 import { LueurCard } from "./LueurCard";
 import { ProgressRing } from "./ProgressRing";
+import { MiniSparkChart } from "./MiniSparkChart";
 import { COLORS } from "./chartUtils";
 import { formatConfidence } from "../../data/labels";
 import { LueurMetricLabel } from "./LueurInfoTip";
@@ -32,7 +33,12 @@ function formatPace(pace) {
   return `${sign}${pace.toFixed(2)}`;
 }
 
-export function XAgeSection({ physiological_age, pace_of_aging }) {
+function formatAgeYears(v) {
+  if (v == null || Number.isNaN(v)) return "—";
+  return Number(v).toFixed(1);
+}
+
+export function XAgeSection({ physiological_age, pace_of_aging, physiological_age_history }) {
   if (!physiological_age && !pace_of_aging) return null;
 
   const pa = physiological_age;
@@ -41,12 +47,22 @@ export function XAgeSection({ physiological_age, pace_of_aging }) {
   const ringScore = Math.min(100, Math.max(18, 100 - Math.abs(delta) * 16));
 
   const pace = pace_of_aging?.pace_years_per_year;
+  const paceRaw = pace_of_aging?.pace_raw_years_per_year;
   const paceSt = paceStatus(pace, pace_of_aging?.label);
   const pacePct = paceGaugePct(pace);
   const paceWindowDays = pace_of_aging?.window_days ?? pace_of_aging?.days_needed ?? 21;
   const calibNeeded = pace_of_aging?.days_needed ?? 21;
   const calibDaysLeft = Math.max(0, calibNeeded - (pace_of_aging?.window_days ?? 0));
   const calibPct = Math.round((pace_of_aging?.progress ?? 0) * 100);
+  const paceClamped =
+    Boolean(pace_of_aging?.pace_clamped) || (pace != null && Math.abs(pace) >= 5);
+
+  const ageSeries = (physiological_age_history || [])
+    .filter((p) => p?.date && p.value != null && !Number.isNaN(p.value))
+    .map((p) => ({ date: p.date, value: p.value }));
+  const showAgeChart =
+    pace_of_aging?.status !== "calibrating" && ageSeries.length >= 2;
+  const realAge = pa?.real_age;
 
   const maxImpact = Math.max(
     1,
@@ -173,6 +189,33 @@ export function XAgeSection({ physiological_age, pace_of_aging }) {
               </>
             ) : (
               <>
+                {/* Curve first — explains the pace number (avoids +5 emotional cliff). */}
+                {showAgeChart && (
+                  <div className="lueur-xage-age-chart lueur-xage-age-chart--lead">
+                    <div className="lueur-xage-age-chart-head">
+                      <span className="lueur-stat-chart-label" style={{ marginBottom: 0 }}>
+                        Évolution · {ageSeries.length} j
+                      </span>
+                      {realAge != null && (
+                        <span className="lueur-xage-age-chart-legend">
+                          pointillé = âge réel ({realAge})
+                        </span>
+                      )}
+                    </div>
+                    <MiniSparkChart
+                      points={ageSeries}
+                      width={320}
+                      height={88}
+                      color={COLORS.TEAL}
+                      gradient="teal"
+                      valueUnit="ans"
+                      formatValue={formatAgeYears}
+                      referenceValue={realAge}
+                      referenceLabel={realAge != null ? String(realAge) : null}
+                    />
+                  </div>
+                )}
+
                 <div className="lueur-xage-pace-value-row">
                   <span className="lueur-xage-pace-num">{formatPace(pace)}</span>
                   <span className="lueur-xage-pace-unit">ans/an</span>
@@ -181,7 +224,9 @@ export function XAgeSection({ physiological_age, pace_of_aging }) {
                   </span>
                 </div>
                 <p className="lueur-meta" style={{ marginBottom: 16 }}>
-                  Tendance sur {paceWindowDays} jours · négatif = rajeunissement
+                  {paceClamped
+                    ? `Plafond ±5 ans/an (brut ${formatPace(paceRaw ?? pace)}) · ${paceWindowDays} j — la courbe montre le détail`
+                    : `Tendance sur ${paceWindowDays} jours · négatif = rajeunissement`}
                 </p>
                 <div className="lueur-xage-pace-track">
                   <div className="lueur-xage-pace-gradient" />

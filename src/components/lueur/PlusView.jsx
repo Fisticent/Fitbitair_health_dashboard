@@ -9,13 +9,14 @@ function plusViewHasContent({
   vitals,
   physiological_age,
   pace_of_aging,
+  physiological_age_history,
   sleep_regularity,
   load_balance,
   hrv_balance,
 }) {
   if (history?.length) return true;
   if (vitals?.vo2_max != null) return true;
-  if (physiological_age || pace_of_aging) return true;
+  if (physiological_age || pace_of_aging || physiological_age_history?.length) return true;
   if (sleep_regularity || load_balance || hrv_balance) return true;
   return false;
 }
@@ -35,6 +36,7 @@ export function PlusView({ data, history }) {
   const {
     focus_date,
     physiological_age,
+    physiological_age_history,
     pace_of_aging,
     vitals,
     sleep_regularity,
@@ -48,6 +50,7 @@ export function PlusView({ data, history }) {
     vitals,
     physiological_age,
     pace_of_aging,
+    physiological_age_history,
     sleep_regularity,
     load_balance,
     hrv_balance,
@@ -68,7 +71,11 @@ export function PlusView({ data, history }) {
 
           <Vo2Section vo2Max={vitals?.vo2_max} />
 
-          <XAgeSection physiological_age={physiological_age} pace_of_aging={pace_of_aging} />
+          <XAgeSection
+            physiological_age={physiological_age}
+            pace_of_aging={pace_of_aging}
+            physiological_age_history={physiological_age_history}
+          />
 
           <AdvancedSignals
             sleep_regularity={sleep_regularity}

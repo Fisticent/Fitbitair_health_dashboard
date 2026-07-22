@@ -26,6 +26,8 @@ export function MiniSparkChart({
   formatValue = defaultFormatValue,
   formatLabel = formatChartDate,
   enriched = false,
+  referenceValue = null,
+  referenceLabel = null,
 }) {
   const { ref, vw: W, vh: H, scale: s } = useFluidChartSize({ w: width, h: height }, 140);
 
@@ -48,8 +50,9 @@ export function MiniSparkChart({
   const p = pad * s;
   const series = points ?? values.map((v) => ({ value: v }));
   const chartValues = series.map((item) => item.value);
-  const { line, area } = lineChart(chartValues, W, H, p);
-  const coords = lineChartPoints(chartValues, W, H, p);
+  const extras = referenceValue != null ? [referenceValue] : [];
+  const { line, area, Y } = lineChart(chartValues, W, H, p, { extras });
+  const coords = lineChartPoints(chartValues, W, H, p, { extras });
   const [hover, setHover] = useState(null);
   const interactive = series.some((item) => item.date != null);
 
@@ -57,16 +60,48 @@ export function MiniSparkChart({
 
   const gradId = GRADIENTS[gradient] || "gB";
   const bandW = coords.length > 1 ? (W - 2 * p) / (coords.length - 1) : W;
-  const active = hover != null ? coords[hover] : null;
-  const activePoint = hover != null ? series[hover] : null;
+  const activeIdx = hover ?? (interactive ? coords.length - 1 : null);
+  const active = activeIdx != null ? coords[activeIdx] : null;
+  const activePoint = activeIdx != null ? series[activeIdx] : null;
   const unitSuffix = valueUnit ? ` ${valueUnit}` : "";
+  const refY =
+    referenceValue != null && typeof Y === "function" ? Y(referenceValue) : null;
+
+  const selectPoint = (i) => setHover(i);
+  const clearHover = () => setHover(null);
+
+  const onSparkKeyDown = (e) => {
+    if (!interactive || !coords.length) return;
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      e.preventDefault();
+      const cur = hover ?? coords.length - 1;
+      const next =
+        e.key === "ArrowRight"
+          ? Math.min(coords.length - 1, cur + 1)
+          : Math.max(0, cur - 1);
+      setHover(next);
+    } else if (e.key === "Escape") {
+      clearHover();
+    }
+  };
 
   return (
     <div
       ref={ref}
       className={`lueur-spark-chart${interactive ? " lueur-spark-chart--interactive" : ""}`}
       style={{ maxWidth: width, width: "100%" }}
-      onMouseLeave={() => setHover(null)}
+      onMouseLeave={clearHover}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) clearHover();
+      }}
+      tabIndex={interactive ? 0 : undefined}
+      role={interactive ? "img" : undefined}
+      aria-label={
+        interactive
+          ? `Courbe interactive, ${coords.length} points. Flèches pour parcourir.`
+          : undefined
+      }
+      onKeyDown={onSparkKeyDown}
     >
       {interactive && activePoint && active && (
         <div className="lueur-spark-tooltip" style={{ left: `${(active.x / W) * 100}%` }}>
@@ -81,6 +116,32 @@ export function MiniSparkChart({
       )}
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" className="lueur-spark-chart-svg" aria-hidden="true">
         <path d={area} fill={`url(#${gradId})`} />
+        {refY != null && (
+          <g className="lueur-spark-reference">
+            <line
+              x1={p}
+              y1={refY}
+              x2={W - p}
+              y2={refY}
+              stroke="var(--lueur-muted)"
+              strokeWidth={1 * s}
+              strokeDasharray={`${3.5 * s} ${3.5 * s}`}
+              strokeOpacity="0.85"
+            />
+            {referenceLabel && (
+              <text
+                x={W - p}
+                y={refY - 4 * s}
+                textAnchor="end"
+                fill="var(--lueur-muted)"
+                fontSize={10 * s}
+                fontFamily="var(--lueur-mono)"
+              >
+                {referenceLabel}
+              </text>
+            )}
+          </g>
+        )}
         <path
           d={line}
           fill="none"
@@ -98,7 +159,11 @@ export function MiniSparkChart({
               width={bandW}
               height={H}
               fill="transparent"
-              onMouseEnter={() => setHover(i)}
+              onMouseEnter={() => selectPoint(i)}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                selectPoint(i);
+              }}
             />
           ))}
         {active && active.value != null && !Number.isNaN(active.value) && (

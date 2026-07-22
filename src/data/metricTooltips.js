@@ -24,7 +24,7 @@ export const METRIC_TOOLTIPS = {
   x_age:
     "X-Âge (âge physiologique) : âge fonctionnel estimé à partir de FC repos, VFC, sommeil, activité et VO₂. Compare-toi à ton âge réel pour voir si tu « rajeunis » ou non.",
   pace_of_aging:
-    "Rythme de vieillissement : vitesse de changement de ton X-Âge sur 7 jours. Négatif = tendance au rajeunissement, positif = vieillissement physiologique accéléré.",
+    "Rythme de vieillissement : pente annualisée de l'âge fonctionnel sur ~60 jours (Theil–Sen). Négatif = rajeunissement. La courbe d'évolution sous le rythme montre le détail jour par jour.",
   health_monitor:
     "Moniteur santé : vitaux du jour comparés à ta moyenne sur 30 jours. Vert = dans la norme personnelle, orange/rouge = écart significatif (à interpréter avec prudence).",
   exercise:

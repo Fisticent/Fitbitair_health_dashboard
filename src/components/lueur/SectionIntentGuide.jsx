@@ -1,16 +1,26 @@
 import { motion } from "framer-motion";
 import { SECTION_INTENTS, intentForSection } from "../../data/sectionIntents";
+import { useMotionSafe } from "../../hooks/useMotionSafe";
 
 export function SectionIntentGuide({ active, onNavigate, compact = false }) {
   const current = intentForSection(active);
+  const { reduce } = useMotionSafe();
+  const ease = [0.22, 1, 0.36, 1];
+  const enter = reduce
+    ? { initial: false, animate: { opacity: 1, y: 0 }, transition: { duration: 0 } }
+    : {
+        initial: { opacity: 0, y: compact ? -6 : -8 },
+        animate: { opacity: 1, y: 0 },
+        transition: { duration: compact ? 0.35 : 0.4, ease },
+      };
 
   if (compact && current) {
     return (
       <motion.div
         className="lueur-intent-guide lueur-intent-guide--compact"
-        initial={{ opacity: 0, y: -6 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+        initial={enter.initial}
+        animate={enter.animate}
+        transition={enter.transition}
       >
         <div className="lueur-intent-compact-inner">
           <span className="lueur-intent-compact-dot" style={{ background: current.dot }} />
@@ -44,9 +54,9 @@ export function SectionIntentGuide({ active, onNavigate, compact = false }) {
     <motion.section
       className="lueur-intent-guide"
       aria-label="Guide des espaces"
-      initial={{ opacity: 0, y: -8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+      initial={enter.initial}
+      animate={enter.animate}
+      transition={enter.transition}
     >
       <div className="lueur-intent-guide-head">
         <p className="lueur-intent-guide-kicker">Votre parcours</p>
@@ -62,9 +72,13 @@ export function SectionIntentGuide({ active, onNavigate, compact = false }) {
               type="button"
               className={`lueur-intent-card${isActive ? " is-active" : ""}`}
               onClick={() => onNavigate(item.id)}
-              initial={{ opacity: 0, y: 10 }}
+              initial={reduce ? false : { opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.35, delay: i * 0.04, ease: [0.22, 1, 0.36, 1] }}
+              transition={
+                reduce
+                  ? { duration: 0 }
+                  : { duration: 0.35, delay: i * 0.04, ease }
+              }
               aria-current={isActive ? "page" : undefined}
             >
               <span className="lueur-intent-card-accent" style={{ background: item.dot }} />

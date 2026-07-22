@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "api": "py -3 -m uvicorn main:app --reload --host 127.0.0.1 --port 8000",
+    "api": "py -3 -m uvicorn main:app --reload --host 127.0.0.1 --port 8000 --app-dir server",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest",

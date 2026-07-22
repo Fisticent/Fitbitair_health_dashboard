@@ -29,9 +29,10 @@ export function useAuth() {
 
   useEffect(() => {
     refresh().catch(() => {
+      // API unreachable — don't force the login wall (local often has no OAuth).
       setState({
         loading: false,
-        authRequired: true,
+        authRequired: false,
         authenticated: false,
         user: null,
       });

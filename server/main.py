@@ -764,6 +764,11 @@ def build_dashboard(
         for d in all_dates[-60:]
     ]
     pace = s.compute_pace_of_aging(age_history)
+    physiological_age_history = [
+        {"date": d, "value": round(float(a), 2)}
+        for d, a in age_history
+        if a is not None
+    ]
 
     # Advanced signals (Oura/Whoop-style), all derived from existing data.
     # compute_load_balance windows strain_by_day internally (28d chronic + 14d series).
@@ -771,13 +776,13 @@ def build_dashboard(
     load_balance = s.compute_load_balance(focus, strain_by_day)
     hrv_balance = s.compute_hrv_balance(focus, hrv)
 
+    # Manual body-fat overrides Google when the user has entered a value
+    # (exact day or carried forward) — otherwise the Santé editor looks broken.
     manual_bf_series = (stored_settings or {}).get("body_fat") or {}
-    _, google_bf_focus = s.nearest_metric(body_fat, focus)
+    manual_bf, _ = us.resolve_manual_body_fat(manual_bf_series, focus)
     body_fat_for_calc = body_fat
-    if google_bf_focus is None and manual_bf_series:
-        manual_bf, _ = us.resolve_manual_body_fat(manual_bf_series, focus)
-        if manual_bf is not None:
-            body_fat_for_calc = {**body_fat, focus: manual_bf}
+    if manual_bf is not None:
+        body_fat_for_calc = {**body_fat, focus: manual_bf}
 
     body = s.compute_body_composition(focus, weight, height, body_fat_for_calc, age=age, sex=sex)
     body = _apply_body_overrides(body, overrides or {})
@@ -840,6 +845,7 @@ def build_dashboard(
         "health_monitor": monitor,
         "stress": stress,
         "physiological_age": x_age,
+        "physiological_age_history": physiological_age_history,
         "pace_of_aging": pace,
         "sleep_regularity": sleep_regularity,
         "load_balance": load_balance,

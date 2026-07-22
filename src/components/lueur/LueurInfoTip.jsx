@@ -21,11 +21,12 @@ function positionBubble(triggerEl) {
   return { top, left, placement };
 }
 
-export function LueurInfoTip({ text }) {
+export function LueurInfoTip({ text, label }) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState({ top: 0, left: 0, placement: "top" });
   const triggerRef = useRef(null);
   const tipId = useId();
+  const ariaLabel = label ? `À propos : ${label}` : "Plus d'informations";
 
   const refresh = useCallback(() => {
     if (triggerRef.current) {
@@ -40,16 +41,41 @@ export function LueurInfoTip({ text }) {
 
   const hide = useCallback(() => setOpen(false), []);
 
+  const toggle = useCallback(
+    (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (open) {
+        hide();
+      } else {
+        show();
+      }
+    },
+    [open, hide, show],
+  );
+
   useEffect(() => {
     if (!open) return undefined;
     const onReposition = () => refresh();
+    const onPointerDown = (e) => {
+      if (triggerRef.current && !triggerRef.current.contains(e.target)) {
+        hide();
+      }
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") hide();
+    };
     window.addEventListener("scroll", onReposition, true);
     window.addEventListener("resize", onReposition);
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("scroll", onReposition, true);
       window.removeEventListener("resize", onReposition);
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKey);
     };
-  }, [open, refresh]);
+  }, [open, refresh, hide]);
 
   if (!text) return null;
 
@@ -77,12 +103,14 @@ export function LueurInfoTip({ text }) {
         ref={triggerRef}
         type="button"
         className="lueur-info-tip"
-        aria-label="Plus d'informations"
+        aria-label={ariaLabel}
+        aria-expanded={open}
         aria-describedby={open ? tipId : undefined}
         onMouseEnter={show}
         onMouseLeave={hide}
         onFocus={show}
         onBlur={hide}
+        onClick={toggle}
       >
         <span className="lueur-info-tip-icon" aria-hidden="true">
           ?
@@ -95,10 +123,16 @@ export function LueurInfoTip({ text }) {
 
 export function LueurMetricLabel({ id, tip, children, as: Tag = "span", className = "" }) {
   const helpText = tip ?? getMetricTip(id);
+  const labelText =
+    typeof children === "string" || typeof children === "number"
+      ? String(children)
+      : id
+        ? String(id).replace(/_/g, " ")
+        : undefined;
   return (
     <Tag className={["lueur-metric-label", className].filter(Boolean).join(" ")}>
       {children}
-      {helpText && <LueurInfoTip text={helpText} />}
+      {helpText && <LueurInfoTip text={helpText} label={labelText} />}
     </Tag>
   );
 }

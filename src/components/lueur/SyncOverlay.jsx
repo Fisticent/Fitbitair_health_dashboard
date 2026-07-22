@@ -1,16 +1,19 @@
 import { motion } from "framer-motion";
+import { useMotionSafe } from "../../hooks/useMotionSafe";
 
 export function SyncOverlay() {
+  const { fadeFast } = useMotionSafe();
+
   return (
     <motion.div
       className="lueur-sync-overlay"
       role="status"
       aria-live="polite"
       aria-busy="true"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.2 }}
+      initial={fadeFast.initial}
+      animate={fadeFast.animate}
+      exit={fadeFast.exit}
+      transition={fadeFast.transition}
     >
       <div className="lueur-sync-bar" aria-hidden="true" />
       <div className="lueur-sync-overlay-panel">

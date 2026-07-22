@@ -50,14 +50,22 @@ export function ringDashValue(radius, value, max, drawn) {
   return ringDash(radius, pct, drawn);
 }
 
-export function lineChart(vals, w, h, pad) {
-  if (!vals?.length) return { line: "", area: "" };
+function chartDomain(vals, extras = []) {
   const filtered = vals.filter((v) => v != null && !Number.isNaN(v));
-  if (filtered.length < 2) return { line: "", area: "" };
+  const extra = extras.filter((v) => v != null && !Number.isNaN(v));
+  if (filtered.length < 2) return null;
+  const domain = [...filtered, ...extra];
+  const mn = Math.min(...domain);
+  const mx = Math.max(...domain);
+  return { filtered, mn, mx, rg: mx - mn || 1 };
+}
 
-  const mn = Math.min(...filtered);
-  const mx = Math.max(...filtered);
-  const rg = mx - mn || 1;
+export function lineChart(vals, w, h, pad, { extras = [] } = {}) {
+  if (!vals?.length) return { line: "", area: "", mn: null, mx: null };
+  const domain = chartDomain(vals, extras);
+  if (!domain) return { line: "", area: "", mn: null, mx: null };
+
+  const { mn, mx, rg } = domain;
   const n = vals.length;
   const X = (i) => pad + ((w - 2 * pad) * i) / (n - 1);
   const Y = (v) => {
@@ -68,17 +76,15 @@ export function lineChart(vals, w, h, pad) {
   const pts = vals.map((v, i) => ({ x: X(i), y: Y(v) }));
   const line = smoothLinePath(pts);
   const area = smoothAreaPath(pts, h - pad);
-  return { line, area };
+  return { line, area, mn, mx, Y };
 }
 
-export function lineChartPoints(vals, w, h, pad) {
+export function lineChartPoints(vals, w, h, pad, { extras = [] } = {}) {
   if (!vals?.length) return [];
-  const filtered = vals.filter((v) => v != null && !Number.isNaN(v));
-  if (filtered.length < 2) return [];
+  const domain = chartDomain(vals, extras);
+  if (!domain) return [];
 
-  const mn = Math.min(...filtered);
-  const mx = Math.max(...filtered);
-  const rg = mx - mn || 1;
+  const { mn, rg } = domain;
   const n = vals.length;
   const X = (i) => pad + ((w - 2 * pad) * i) / (n - 1);
   const Y = (v) => {

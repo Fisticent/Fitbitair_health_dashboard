@@ -30,6 +30,10 @@
   --lueur-warn-border: #f3e0c8;
   --lueur-alert-bg: #fff5f3;
   --lueur-alert-border: #f0d0c8;
+  --lueur-ink-soft: #5f6671;
+  --lueur-border-ui: #ebedf0;
+  --lueur-border-hover: #dde0e5;
+  --lueur-bar-inactive: #cdd6e2;
 }
 
 ::selection {
@@ -130,7 +134,7 @@ body {
   cursor: pointer;
   font-size: 15px;
   font-weight: 500;
-  color: #5f6671;
+  color: var(--lueur-ink-soft);
   background: transparent;
   border: 1px solid transparent;
   transition: color 0.2s var(--lueur-ease), background 0.2s var(--lueur-ease),
@@ -148,7 +152,7 @@ body {
   font-weight: 600;
   color: var(--lueur-text);
   background: #fff;
-  border-color: #ebedf0;
+  border-color: var(--lueur-border-ui);
   box-shadow: 0 1px 2px rgba(20, 22, 27, 0.05), 0 8px 20px -14px rgba(20, 22, 27, 0.3);
 }
 
@@ -167,7 +171,7 @@ body {
   padding: 12px;
   border-radius: 14px;
   background: #fff;
-  border: 1px solid #ebedf0;
+  border: 1px solid var(--lueur-border-ui);
   width: 100%;
   text-align: left;
   cursor: pointer;
@@ -270,7 +274,7 @@ body {
 }
 
 .lueur-toolbar-date:hover {
-  background: #fafbfc;
+  background: var(--lueur-surface-subtle);
   border-color: #dde0e6;
 }
 
@@ -317,7 +321,7 @@ body {
 }
 
 .lueur-btn-sync:hover:not(:disabled) {
-  background: #fafbfc;
+  background: var(--lueur-surface-subtle);
   border-color: #dde0e6;
 }
 
@@ -360,7 +364,7 @@ body {
 }
 
 .lueur-card--clickable:hover {
-  border-color: #dde0e5;
+  border-color: var(--lueur-border-hover);
   box-shadow: 0 1px 2px rgba(20, 22, 27, 0.06), 0 20px 40px -24px rgba(20, 22, 27, 0.28);
 }
 
@@ -755,7 +759,7 @@ body {
 
 .lueur-pill-label {
   font-size: 13px;
-  color: #5f6671;
+  color: var(--lueur-ink-soft);
   font-weight: 500;
 }
 
@@ -930,7 +934,7 @@ body {
 .lueur-stage-dur {
   font-family: var(--lueur-mono);
   font-size: 13px;
-  color: #5f6671;
+  color: var(--lueur-ink-soft);
   text-align: right;
 }
 
@@ -1670,7 +1674,7 @@ body {
   padding: 16px;
   border-radius: 16px;
   border: 1px solid var(--lueur-border);
-  background: #fafbfc;
+  background: var(--lueur-surface-subtle);
 }
 
 .lueur-card--activity-day .lueur-card-section-label {
@@ -1691,7 +1695,7 @@ body {
   gap: 8px;
   padding: 18px 20px;
   border-radius: 16px;
-  background: #fafbfc;
+  background: var(--lueur-surface-subtle);
   min-height: 132px;
 }
 
@@ -1807,8 +1811,8 @@ body {
 }
 
 .lueur-stat-badge--neutral {
-  background: #eef0f3;
-  color: #6b727d;
+  background: var(--lueur-bg);
+  color: var(--lueur-text-secondary);
 }
 
 .lueur-stat-chart {
@@ -2057,8 +2061,8 @@ body {
 }
 
 .lueur-body-comp-pill--neutral {
-  background: #eef0f3;
-  color: #6b727d;
+  background: var(--lueur-bg);
+  color: var(--lueur-text-secondary);
 }
 
 .lueur-body-comp-value-row {
@@ -2692,7 +2696,7 @@ body {
 
 .lueur-fit-tick {
   font-size: 9px;
-  fill: #9aa0ab;
+  fill: var(--lueur-muted);
 }
 
 .lueur-fit-tip {
@@ -2707,7 +2711,7 @@ body {
   max-width: 360px;
   margin: 4px auto 0;
   font-size: 10px;
-  color: #9aa0ab;
+  color: var(--lueur-muted);
 }
 
 .lueur-fit-axis-x {
@@ -3225,7 +3229,7 @@ body {
 }
 
 .lueur-btn-google:hover {
-  background: #fafbfc;
+  background: var(--lueur-surface-subtle);
   box-shadow: 0 4px 16px rgba(21, 23, 28, 0.08);
 }
 
@@ -3730,7 +3734,7 @@ body {
   padding: 14px 16px;
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.92);
-  border: 1px solid #ebedf0;
+  border: 1px solid var(--lueur-border-ui);
   box-shadow: 0 1px 2px rgba(20, 22, 27, 0.03);
 }
 
@@ -3910,7 +3914,7 @@ body {
   gap: 14px;
   padding: 14px 16px;
   border-radius: 14px;
-  background: #fafbfc;
+  background: var(--lueur-surface-subtle);
   border: 1px solid var(--lueur-border-soft);
 }
 
@@ -3940,7 +3944,7 @@ body {
   gap: 16px;
   padding: 16px 18px;
   border-radius: 14px;
-  background: #fafbfc;
+  background: var(--lueur-surface-subtle);
   border: 1px solid var(--lueur-border-soft);
 }
 
@@ -3995,7 +3999,7 @@ body {
   padding: 12px 14px;
   border-radius: 12px;
   border: 1px solid var(--lueur-border-soft);
-  background: #fafbfc;
+  background: var(--lueur-surface-subtle);
   transition: background 0.15s, border-color 0.15s;
 }
 
@@ -4145,7 +4149,7 @@ body {
   font-weight: 500;
   padding: 2px 8px;
   border-radius: 999px;
-  background: #eef0f3;
+  background: var(--lueur-bg);
   color: var(--lueur-text-secondary);
   white-space: nowrap;
 }

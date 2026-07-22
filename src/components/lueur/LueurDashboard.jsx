@@ -1,19 +1,32 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, lazy, Suspense } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { LueurSidebar } from "./LueurSidebar";
 import { ChartGradients } from "./MiniSparkChart";
 import { TodayView } from "./TodayView";
-import { SleepView } from "./SleepView";
-import { ReadinessView } from "./ReadinessView";
-import { StrainView } from "./StrainView";
-import { HealthView } from "./HealthView";
-import { PlusView } from "./PlusView";
-import { ProfileView } from "./ProfileView";
 import { LueurTopbarActions } from "./LueurTopbarActions";
 import { SyncOverlay } from "./SyncOverlay";
 import { useManualBodyFat, computeLeanMass, useStepsGoal, useCaloriesGoal, useProfileOverrides } from "../../hooks/useManualMetrics";
 import { formatSyncTime, formatDateLong } from "./chartUtils";
 import { useMotionSafe } from "../../hooks/useMotionSafe";
+
+const SleepView = lazy(() =>
+  import("./SleepView").then((m) => ({ default: m.SleepView })),
+);
+const ReadinessView = lazy(() =>
+  import("./ReadinessView").then((m) => ({ default: m.ReadinessView })),
+);
+const StrainView = lazy(() =>
+  import("./StrainView").then((m) => ({ default: m.StrainView })),
+);
+const HealthView = lazy(() =>
+  import("./HealthView").then((m) => ({ default: m.HealthView })),
+);
+const PlusView = lazy(() =>
+  import("./PlusView").then((m) => ({ default: m.PlusView })),
+);
+const ProfileView = lazy(() =>
+  import("./ProfileView").then((m) => ({ default: m.ProfileView })),
+);
 
 export function LueurDashboard({
   data,
@@ -207,17 +220,17 @@ export function LueurDashboard({
             </p>
           )}
 
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={section}
-              initial={motionSafe.fade.initial}
-              animate={motionSafe.fade.animate}
-              exit={motionSafe.fade.exit}
-              transition={motionSafe.fade.transition}
-            >
+          {/* No exit animation — avoids dual section trees in the a11y tree mid-swap. */}
+          <motion.div
+            key={section}
+            initial={motionSafe.reduce ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={motionSafe.fade.transition}
+          >
+            <Suspense fallback={<p className="lueur-meta">Chargement…</p>}>
               {renderView()}
-            </motion.div>
-          </AnimatePresence>
+            </Suspense>
+          </motion.div>
         </div>
       </main>
 

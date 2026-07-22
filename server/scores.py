@@ -384,6 +384,15 @@ def health_monitor(
         risk = max(0.0, -z) if low_only else abs(z)
         status = "normal" if risk < 1 else "warning" if risk < 2 else "alert"
         baseline_raw = statistics.median(hist_vals) if hist_vals else val
+        # Respiration is often ultra-stable (MAD ≪ 1). A −1 /min swing then
+        # looks like |z|≥2 → "Écart notable" while the UI only shows −3 %.
+        # Require a meaningful absolute gap before escalating.
+        if name == "Respiration" and hist_vals:
+            abs_delta = abs(val - baseline_raw)
+            if abs_delta <= 1.0:
+                status = "normal"
+            elif abs_delta <= 2.0 and status == "alert":
+                status = "warning"
         baseline = round(baseline_raw, 1) if hist_vals else _display_metric(name, val)
         return {
             "name": name,
@@ -401,7 +410,7 @@ def health_monitor(
     for item in [
         row("FC repos", "bpm", rhr.get(day), [rhr[d] for d in hist if d in rhr], invert=True, floor=2.0),
         row("VFC", "ms", hrv.get(day), [hrv[d] for d in hist if d in hrv], floor=3.0),
-        row("Respiration", "/min", resp.get(day), [resp[d] for d in hist if d in resp], invert=True, floor=0.5),
+        row("Respiration", "/min", resp.get(day), [resp[d] for d in hist if d in resp], invert=True, floor=1.0),
         row("SpO₂", "%", spo2.get(day), [spo2[d] for d in hist if d in spo2], low_only=True, floor=1.0),
         row(
             "Temp. peau", "°C",

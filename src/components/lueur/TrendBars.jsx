@@ -8,7 +8,7 @@ export function TrendBars({
   gap = 12,
   highlightLast = true,
   color = COLORS.TEAL,
-  inactiveColor = "#cdd6e2",
+  inactiveColor = "var(--lueur-bar-inactive)",
   maxValue = 100,
   valueUnit = "%",
   formatValue = (v) => Math.round(v),

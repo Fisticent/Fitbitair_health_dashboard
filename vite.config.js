@@ -72,4 +72,15 @@ export default defineConfig({
     setupFiles: "./vitest.setup.js",
     globals: true,
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "vendor-motion": ["framer-motion"],
+          "vendor-charts": ["recharts"],
+          "vendor-day": ["date-fns", "react-day-picker"],
+        },
+      },
+    },
+  },
 });

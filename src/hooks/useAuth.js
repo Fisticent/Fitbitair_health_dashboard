@@ -8,6 +8,7 @@ export function useAuth() {
     authRequired: false,
     authenticated: false,
     user: null,
+    apiReachable: true,
   });
 
   const refresh = useCallback(async () => {
@@ -20,6 +21,7 @@ export function useAuth() {
       loading: false,
       authRequired: Boolean(data.auth_required),
       authenticated: Boolean(data.authenticated),
+      apiReachable: true,
       user: data.authenticated
         ? { email: data.email, name: data.name, picture: data.picture }
         : null,
@@ -35,6 +37,7 @@ export function useAuth() {
         authRequired: false,
         authenticated: false,
         user: null,
+        apiReachable: false,
       });
     });
   }, [refresh]);

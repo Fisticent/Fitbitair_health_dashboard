@@ -197,7 +197,7 @@ export function LoadBalanceChart({ series }) {
                 y={y(tick) + 3 * t}
                 textAnchor="end"
                 fontSize={8.5 * t}
-                fill="#9aa0ab"
+                fill="var(--lueur-muted)"
                 fontFamily="var(--lueur-mono)"
               >
                 {tick.toFixed(1)}
@@ -312,7 +312,7 @@ export function StepsWeekChart({ series, goal = 10000 }) {
     <KpiBarChartFrame>
       <div ref={ref} className="lueur-chart-fluid-wrap">
         <svg viewBox={`0 0 ${VW} ${VH}`} width="100%" className="lueur-chart-fluid-svg" aria-hidden="true">
-      <text x={padL} y={14 * s} fontSize={9.5 * s} fill="#9aa0ab" fontFamily="var(--lueur-mono)">
+      <text x={padL} y={14 * s} fontSize={9.5 * s} fill="var(--lueur-muted)" fontFamily="var(--lueur-mono)">
         moy. {n} j · {avg.toLocaleString("fr-FR")} pas · {metCount}/{n} atteints
       </text>
       {vals.map((v, i) => {
@@ -339,7 +339,7 @@ export function StepsWeekChart({ series, goal = 10000 }) {
                 height={h + 2 * s}
                 rx={7 * s}
                 fill="none"
-                stroke={met ? TEAL : "#9aa0ab"}
+                stroke={met ? TEAL : "var(--lueur-muted)"}
                 strokeWidth={1.5 * s}
                 strokeOpacity="0.4"
               />
@@ -349,7 +349,7 @@ export function StepsWeekChart({ series, goal = 10000 }) {
               y={baseY - h - 7 * s}
               textAnchor="middle"
               fontSize={8.5 * s}
-              fill={met ? TEAL : "#9aa0ab"}
+              fill={met ? TEAL : "var(--lueur-muted)"}
               fontFamily="var(--lueur-mono)"
             >
               {(v / 1000).toFixed(1)}k
@@ -490,7 +490,7 @@ export function SleepDebtChart({ series, defaultNeed = 7.5 }) {
                 {v.toFixed(1)}
               </text>
             )}
-            <text x={cx} y={VH - 10 * s} textAnchor="middle" fontSize={10 * s} fill="#9aa0ab" fontFamily="var(--lueur-mono)">
+            <text x={cx} y={VH - 10 * s} textAnchor="middle" fontSize={10 * s} fill="var(--lueur-muted)" fontFamily="var(--lueur-mono)">
               {weekdayLetter(row.date)}
             </text>
           </g>
@@ -562,7 +562,7 @@ export function RecoveryZonedChart({ score, zone, history, focusDate, statusLabe
   const deltaUp = delta != null && delta > 0;
   const deltaFlat = delta != null && delta === 0;
   const deltaSign = deltaFlat ? "=" : deltaUp ? "▲" : "▼";
-  const deltaCol = deltaFlat ? "#9aa0ab" : deltaUp ? "#13916f" : COLORS.CORAL;
+  const deltaCol = deltaFlat ? "var(--lueur-muted)" : deltaUp ? "#13916f" : COLORS.CORAL;
   const deltaBg = deltaFlat ? "#f3f4f6" : deltaUp ? "#e7f6f1" : "#fbeee9";
   const deltaText =
     delta != null
@@ -637,7 +637,7 @@ export function RecoveryZonedChart({ score, zone, history, focusDate, statusLabe
             textAnchor="middle"
             fontSize={labelSize}
             letterSpacing={1.2 * t}
-            fill="#9aa0ab"
+            fill="var(--lueur-muted)"
             fontFamily="var(--lueur-mono)"
           >
             RÉCUP
@@ -689,7 +689,7 @@ export function RecoveryZonedChart({ score, zone, history, focusDate, statusLabe
                 x={panelL}
                 y={trendLabelY}
                 fontSize={8.5 * t}
-                fill="#9aa0ab"
+                fill="var(--lueur-muted)"
                 fontFamily="var(--lueur-sans)"
               >
                 tendance 7 j
@@ -888,7 +888,7 @@ export function SkinTempDivergingChart({ series, threshold = 0.3 }) {
             y={baseY + 3 * s}
             textAnchor="end"
             fontSize={8.5 * s}
-            fill="#9aa0ab"
+            fill="var(--lueur-muted)"
             fontFamily="var(--lueur-mono)"
           >
             base

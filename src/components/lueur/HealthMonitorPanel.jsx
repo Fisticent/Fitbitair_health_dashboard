@@ -130,17 +130,21 @@ export function HealthMonitorPanel({ metrics }) {
         ))}
       </div>
 
-      <div className="lueur-monitor-legend" aria-hidden="true">
+      <div
+        className="lueur-monitor-legend"
+        role="group"
+        aria-label="Légende des barres : zone de norme, ta médiane, valeur actuelle"
+      >
         <span className="lueur-monitor-legend-item">
-          <span className="lueur-monitor-legend-norm" />
+          <span className="lueur-monitor-legend-norm" aria-hidden="true" />
           zone de norme
         </span>
         <span className="lueur-monitor-legend-item">
-          <span className="lueur-monitor-legend-avg" />
+          <span className="lueur-monitor-legend-avg" aria-hidden="true" />
           ta médiane
         </span>
         <span className="lueur-monitor-legend-item">
-          <span className="lueur-monitor-legend-dot" />
+          <span className="lueur-monitor-legend-dot" aria-hidden="true" />
           valeur actuelle
         </span>
       </div>

@@ -211,6 +211,10 @@ export function LueurWeightChart({
               height={baseY - pad.t}
               fill="transparent"
               onMouseEnter={() => setHover(i)}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                setHover(i);
+              }}
             />
           ))}
 

@@ -7,7 +7,7 @@
   --lueur-border: #e8eaee;
   --lueur-border-soft: #eef0f3;
   --lueur-text: #15171c;
-  --lueur-text-secondary: #6b727d;
+  --lueur-text-secondary: #667085;
   /* AA on white (~4.6:1) — was #9aa0ab @ 2.63:1 */
   --lueur-muted: #667085;
   --lueur-teal: #15b393;
@@ -22,6 +22,14 @@
   --lueur-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --lueur-shadow-card: 0 1px 2px rgba(20, 22, 27, 0.04), 0 16px 32px -26px rgba(20, 22, 27, 0.22);
   --lueur-shadow-hero: 0 1px 2px rgba(20, 22, 27, 0.04), 0 24px 48px -34px rgba(20, 22, 27, 0.28);
+  --lueur-surface-subtle: #fafbfc;
+  --lueur-track: #e8ebf0;
+  --lueur-marker: #9aa3b2;
+  --lueur-legend-norm: #c5cad3;
+  --lueur-warn-bg: #fff8f0;
+  --lueur-warn-border: #f3e0c8;
+  --lueur-alert-bg: #fff5f3;
+  --lueur-alert-border: #f0d0c8;
 }
 
 ::selection {
@@ -107,6 +115,10 @@ body {
   letter-spacing: 0.16em;
   color: var(--lueur-muted);
   padding: 0 14px 8px;
+}
+
+.lueur-nav {
+  display: contents;
 }
 
 .lueur-nav-item {
@@ -342,6 +354,7 @@ body {
 }
 
 .lueur-card--clickable {
+  position: relative;
   cursor: pointer;
   transition: box-shadow 0.2s, border-color 0.2s;
 }
@@ -351,9 +364,39 @@ body {
   box-shadow: 0 1px 2px rgba(20, 22, 27, 0.06), 0 20px 40px -24px rgba(20, 22, 27, 0.28);
 }
 
-.lueur-card--clickable:focus-visible {
+.lueur-card-hit {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.lueur-card-hit:focus-visible {
   outline: 2px solid var(--lueur-teal);
   outline-offset: 2px;
+}
+
+.lueur-card--clickable > *:not(.lueur-card-hit) {
+  position: relative;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.lueur-card--clickable .lueur-info-tip,
+.lueur-card--clickable .lueur-info-tip *,
+.lueur-card--clickable button:not(.lueur-card-hit),
+.lueur-card--clickable a,
+.lueur-card--clickable input,
+.lueur-card--clickable select,
+.lueur-card--clickable textarea,
+.lueur-card--clickable [role="button"],
+.lueur-card--clickable [role="link"] {
+  pointer-events: auto;
 }
 
 .lueur-label {
@@ -1401,17 +1444,17 @@ body {
   padding: 16px 18px;
   border-radius: 16px;
   border: 1px solid var(--lueur-border-soft);
-  background: #fafbfc;
+  background: var(--lueur-surface-subtle);
 }
 
 .lueur-monitor-metric--warning {
-  background: #fff8f0;
-  border-color: #f3e0c8;
+  background: var(--lueur-warn-bg);
+  border-color: var(--lueur-warn-border);
 }
 
 .lueur-monitor-metric--alert {
-  background: #fff5f3;
-  border-color: #f0d0c8;
+  background: var(--lueur-alert-bg);
+  border-color: var(--lueur-alert-border);
 }
 
 .lueur-monitor-metric-head {
@@ -1501,7 +1544,7 @@ body {
   position: relative;
   height: 8px;
   border-radius: 999px;
-  background: #e8ebf0;
+  background: var(--lueur-track);
 }
 
 .lueur-monitor-pos-norm {
@@ -1518,7 +1561,7 @@ body {
   width: 2px;
   height: 14px;
   transform: translateX(-50%);
-  background: #9aa3b2;
+  background: var(--lueur-marker);
   border-radius: 1px;
   z-index: 1;
 }
@@ -1558,13 +1601,13 @@ body {
   width: 28px;
   height: 6px;
   border-radius: 999px;
-  background: #c5cad3;
+  background: var(--lueur-legend-norm);
 }
 
 .lueur-monitor-legend-avg {
   width: 2px;
   height: 12px;
-  background: #9aa3b2;
+  background: var(--lueur-marker);
   border-radius: 1px;
 }
 
@@ -3083,12 +3126,22 @@ body {
   }
 }
 
-.lueur-inline-error,
-.lueur-inline-warn {
-  padding: 10px 14px;
-  border-radius: 12px;
+.lueur-api-offline {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  padding: 10px 16px;
   font-size: 13px;
-  margin-bottom: 16px;
+  line-height: 1.4;
+  color: #92400e;
+  background: #fffbeb;
+  border-bottom: 1px solid #fde68a;
+  text-align: center;
+}
+
+.lueur-api-offline code {
+  font-family: var(--lueur-mono);
+  font-size: 12px;
 }
 
 .lueur-inline-error {
@@ -3505,9 +3558,11 @@ body {
 }
 
 .lueur-hero-detail-link {
-  display: inline-block;
-  margin-top: 18px;
-  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 10px;
+  padding: 10px 2px;
   border: none;
   background: none;
   font-family: inherit;
@@ -3523,8 +3578,10 @@ body {
 }
 
 .lueur-inline-nav-link {
-  display: inline;
-  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 10px 2px;
   border: none;
   background: none;
   font: inherit;
@@ -3532,6 +3589,7 @@ body {
   color: var(--lueur-blue);
   cursor: pointer;
   text-decoration: none;
+  vertical-align: baseline;
 }
 
 .lueur-inline-nav-link:hover {
@@ -4357,21 +4415,100 @@ body {
     flex-direction: column;
   }
 
+  /* Compact sticky top rail — nav items were width:100% so they stacked and ate the viewport. */
   .lueur-sidebar {
     width: 100%;
+    flex: 0 0 auto;
     height: auto;
-    position: relative;
+    max-height: none;
+    position: sticky;
+    top: 0;
+    z-index: 40;
     flex-direction: row;
-    flex-wrap: wrap;
-    padding: 16px;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 12px;
+    border-right: none;
+    border-bottom: 1px solid var(--lueur-border);
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
   }
 
-  .lueur-profile {
+  .lueur-sidebar::-webkit-scrollbar {
     display: none;
   }
 
+  .lueur-brand {
+    padding: 0 4px 0 0;
+    flex: 0 0 auto;
+  }
+
+  .lueur-brand svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .lueur-brand-name {
+    font-size: 15px;
+  }
+
+  .lueur-nav-label {
+    display: none;
+  }
+
+  .lueur-nav {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 6px;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .lueur-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .lueur-nav-item {
+    width: auto;
+    flex: 0 0 auto;
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 13px;
+    gap: 8px;
+    white-space: nowrap;
+  }
+
+  .lueur-profile {
+    display: flex;
+    margin-top: 0;
+    margin-left: auto;
+    width: auto;
+    flex: 0 0 auto;
+    padding: 4px;
+    gap: 0;
+    border-radius: 999px;
+  }
+
+  .lueur-profile-name,
+  .lueur-profile-sub {
+    display: none;
+  }
+
+  .lueur-profile-avatar {
+    width: 32px;
+    height: 32px;
+    font-size: 11px;
+  }
+
   .lueur-main {
-    padding: 20px 16px 48px;
+    padding: 16px 16px 48px;
     height: auto;
     overflow: visible;
   }

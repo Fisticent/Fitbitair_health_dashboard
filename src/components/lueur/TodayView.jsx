@@ -305,7 +305,13 @@ export function TodayView({
       </LueurCard>
 
       <div className="lueur-grid-4">
-        <LueurCard span2 clickable className="lueur-card--tile" onClick={() => onNavigate("sleep")}>
+        <LueurCard
+          span2
+          clickable
+          className="lueur-card--tile"
+          navLabel="Voir le sommeil"
+          onClick={() => onNavigate("sleep")}
+        >
           <div className="lueur-card-head">
             <LueurMetricLabel id="sleep" as="p" className="lueur-label">
               Sommeil
@@ -328,7 +334,13 @@ export function TodayView({
           </div>
         </LueurCard>
 
-        <LueurCard span2 className="lueur-card--activity lueur-card--tile" clickable onClick={() => onNavigate("strain")}>
+        <LueurCard
+          span2
+          className="lueur-card--activity lueur-card--tile"
+          clickable
+          navLabel="Voir la charge"
+          onClick={() => onNavigate("strain")}
+        >
           <div className="lueur-card-head">
             <LueurMetricLabel id="activity_day" as="p" className="lueur-label">
               Activité

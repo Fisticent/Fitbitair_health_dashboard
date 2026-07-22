@@ -159,6 +159,7 @@ export function StrainFitChart({ history, focusDate, todayStrain, todayRecovery 
               strokeWidth={isToday ? 2 * s : 0}
               onMouseEnter={() => setHover(i)}
               onMouseLeave={() => setHover(null)}
+              onPointerDown={() => setHover(i)}
               style={{ cursor: "pointer" }}
             />
           );
@@ -172,7 +173,7 @@ export function StrainFitChart({ history, focusDate, todayStrain, todayRecovery 
               y1={pad.t}
               x2={xOf(hovered.recovery)}
               y2={pad.t + plotH}
-              stroke="#9aa0ab"
+              stroke="var(--lueur-muted)"
               strokeDasharray="3 3"
               strokeOpacity="0.5"
               strokeWidth={1 * s}

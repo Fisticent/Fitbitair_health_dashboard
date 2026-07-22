@@ -11,7 +11,6 @@ import { PlusView } from "./PlusView";
 import { ProfileView } from "./ProfileView";
 import { LueurTopbarActions } from "./LueurTopbarActions";
 import { SyncOverlay } from "./SyncOverlay";
-import { SectionIntentGuide } from "./SectionIntentGuide";
 import { useManualBodyFat, computeLeanMass, useStepsGoal, useCaloriesGoal, useProfileOverrides } from "../../hooks/useManualMetrics";
 import { formatSyncTime, formatDateLong } from "./chartUtils";
 import { useMotionSafe } from "../../hooks/useMotionSafe";
@@ -193,14 +192,6 @@ export function LueurDashboard({
                 onRefresh={onRefresh}
               />
             </div>
-          )}
-
-          {section !== "profile" && section !== "today" && (
-            <SectionIntentGuide
-              active={section}
-              onNavigate={navigate}
-              compact
-            />
           )}
 
           {error && <p className="lueur-inline-error">{error}</p>}

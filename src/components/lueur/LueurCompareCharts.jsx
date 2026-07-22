@@ -359,7 +359,29 @@ function LueurScoresChart({ history }) {
 
   return (
     <div className="lueur-scores-multiples-panel">
-      <div className="lueur-scores-multiples" onMouseLeave={() => setHover(null)}>
+      <div
+        className="lueur-scores-multiples"
+        onMouseLeave={() => setHover(null)}
+        onBlur={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget)) setHover(null);
+        }}
+        tabIndex={0}
+        role="img"
+        aria-label={`Scores sur ${history.length} jours. Flèches pour parcourir, toucher pour sélectionner.`}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+            e.preventDefault();
+            const cur = hover ?? history.length - 1;
+            const next =
+              e.key === "ArrowRight"
+                ? Math.min(history.length - 1, cur + 1)
+                : Math.max(0, cur - 1);
+            setHover(next);
+          } else if (e.key === "Escape") {
+            setHover(null);
+          }
+        }}
+      >
         {activeRow && activeX != null && (
           <div className="lueur-spark-tooltip" style={{ left: `${(activeX / vw) * 100}%` }}>
             <span className="lueur-spark-tooltip-date">{formatChartDate(activeRow.date)}</span>
@@ -406,7 +428,7 @@ function LueurScoresChart({ history }) {
                     x={10 * t}
                     y={track.trackTop + 28 * t}
                     fontSize={9 * t}
-                    fill="#9aa0ab"
+                    fill="var(--lueur-muted)"
                     fontFamily="var(--lueur-mono)"
                   >
                     moy {track.avg}
@@ -485,6 +507,10 @@ function LueurScoresChart({ history }) {
                 height={plotBottom - padT}
                 fill="transparent"
                 onMouseEnter={() => setHover(i)}
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  setHover(i);
+                }}
               />
             ))}
             {activeX != null && (
@@ -493,7 +519,7 @@ function LueurScoresChart({ history }) {
                 y1={padT}
                 x2={activeX}
                 y2={plotBottom}
-                stroke="#9aa0ab"
+                stroke="var(--lueur-muted)"
                 strokeWidth={1 * t}
                 strokeDasharray="3 3"
                 strokeOpacity="0.45"
@@ -559,7 +585,7 @@ export function LueurComparePanel({ history }) {
     <LueurCard>
       <p className="lueur-label lueur-card-section-label">Comparatif</p>
       <p className="lueur-meta" style={{ marginBottom: 20 }}>
-        Courbes 14 jours · survolez pour le détail · poids dans Santé
+        Courbes 14 jours · toucher ou flèches pour le détail · poids dans Santé
       </p>
 
       <div className="lueur-compare-block">

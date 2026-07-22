@@ -39,6 +39,30 @@ export function TrendBars({
       className={`lueur-trend-bars${interactive ? " lueur-trend-bars--interactive" : ""}`}
       style={{ height, gap }}
       onMouseLeave={() => setHover(null)}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) setHover(null);
+      }}
+      tabIndex={interactive ? 0 : undefined}
+      role={interactive ? "img" : undefined}
+      aria-label={
+        interactive
+          ? `Barres de tendance, ${data.length} jours. Flèches pour parcourir.`
+          : undefined
+      }
+      onKeyDown={(e) => {
+        if (!interactive || !data.length) return;
+        if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+          e.preventDefault();
+          const cur = hover ?? data.length - 1;
+          const next =
+            e.key === "ArrowRight"
+              ? Math.min(data.length - 1, cur + 1)
+              : Math.max(0, cur - 1);
+          setHover(next);
+        } else if (e.key === "Escape") {
+          setHover(null);
+        }
+      }}
     >
       {interactive && active && (
         <div
@@ -65,6 +89,7 @@ export function TrendBars({
             key={d.date || d.label || i}
             className={`lueur-trend-col${isHover ? " is-hover" : ""}`}
             onMouseEnter={() => interactive && setHover(i)}
+            onPointerDown={() => interactive && setHover(i)}
           >
             <div className="lueur-trend-bar-wrap">
               <div

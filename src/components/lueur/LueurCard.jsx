@@ -4,6 +4,7 @@ export function LueurCard({
   hero = false,
   clickable = false,
   onClick,
+  navLabel,
   span2 = false,
   span3 = false,
   span4 = false,
@@ -21,24 +22,17 @@ export function LueurCard({
     .filter(Boolean)
     .join(" ");
 
-  // Prefer a div (not <button>) so metric tips can nest without invalid HTML.
+  // Stretch hit-target button keeps tips / controls out of a nested role="button" tree.
   if (onClick) {
-    const onKeyDown = (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        onClick(e);
-      }
-    };
     return (
-      <div
-        className={cls}
-        role="button"
-        tabIndex={0}
-        onClick={onClick}
-        onKeyDown={onKeyDown}
-        style={style}
-      >
+      <div className={cls} style={style}>
         {children}
+        <button
+          type="button"
+          className="lueur-card-hit"
+          onClick={onClick}
+          aria-label={navLabel || "Ouvrir la section"}
+        />
       </div>
     );
   }

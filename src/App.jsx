@@ -20,7 +20,7 @@ function readAuthError() {
 export default function App() {
   const authError = useMemo(() => readAuthError(), []);
   const reduceMotion = useReducedMotion();
-  const { loading: authLoading, authRequired, authenticated, user, login, logout } = useAuth();
+  const { loading: authLoading, authRequired, authenticated, user, login, logout, apiReachable } = useAuth();
   const settingsSyncEnabled = authRequired && authenticated;
   const { ready: settingsReady } = useUserSettingsSync({ enabled: settingsSyncEnabled });
   const canLoadDashboard =
@@ -96,6 +96,11 @@ export default function App() {
 
   return (
     <ErrorBoundary>
+      {!apiReachable && (
+        <div className="lueur-api-offline" role="status">
+          API injoignable — mode local (auth désactivée). Relance <code>npm run api</code> si besoin.
+        </div>
+      )}
       <LueurDashboard
         data={data}
         selectedDate={selectedDate}

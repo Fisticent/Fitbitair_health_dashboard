@@ -98,7 +98,7 @@ export function MiniSparkChart({
       role={interactive ? "img" : undefined}
       aria-label={
         interactive
-          ? `Courbe interactive, ${coords.length} points. Flèches pour parcourir.`
+          ? `Courbe interactive, ${coords.length} points. Flèches pour parcourir, toucher pour sélectionner.`
           : undefined
       }
       onKeyDown={onSparkKeyDown}

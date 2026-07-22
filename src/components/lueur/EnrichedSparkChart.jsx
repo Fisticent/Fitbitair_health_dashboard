@@ -91,6 +91,28 @@ export function EnrichedSparkChart({
       className={`lueur-spark-chart lueur-spark-chart--enriched${interactive ? " lueur-spark-chart--interactive" : ""}`}
       style={{ maxWidth: width, width: "100%" }}
       onMouseLeave={() => setHover(null)}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) setHover(null);
+      }}
+      tabIndex={interactive ? 0 : undefined}
+      role={interactive ? "img" : undefined}
+      aria-label={
+        interactive
+          ? `Courbe interactive, ${n} points. Flèches pour parcourir, toucher pour sélectionner.`
+          : undefined
+      }
+      onKeyDown={(e) => {
+        if (!interactive || !n) return;
+        if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+          e.preventDefault();
+          const cur = hover ?? last.i;
+          const next =
+            e.key === "ArrowRight" ? Math.min(n - 1, cur + 1) : Math.max(0, cur - 1);
+          setHover(next);
+        } else if (e.key === "Escape") {
+          setHover(null);
+        }
+      }}
     >
       {interactive && activePoint && active?.v != null && hover != null && (
         <div className="lueur-spark-tooltip" style={{ left: `${(active.x / W) * 100}%` }}>
@@ -129,10 +151,10 @@ export function EnrichedSparkChart({
           strokeDasharray="3 4"
           strokeOpacity="0.5"
         />
-        <text x={W - pR + 4 * s} y={sy(hi) + 4 * s} fontSize={axisFont} fill="#9aa0ab" fontFamily="var(--lueur-mono)">
+        <text x={W - pR + 4 * s} y={sy(hi) + 4 * s} fontSize={axisFont} fill="var(--lueur-muted)" fontFamily="var(--lueur-mono)">
           {fmt(hi)}
         </text>
-        <text x={W - pR + 4 * s} y={sy(lo) + 4 * s} fontSize={axisFont} fill="#9aa0ab" fontFamily="var(--lueur-mono)">
+        <text x={W - pR + 4 * s} y={sy(lo) + 4 * s} fontSize={axisFont} fill="var(--lueur-muted)" fontFamily="var(--lueur-mono)">
           {fmt(lo)}
         </text>
         <text x={W - pR + 4 * s} y={sy(avg) + 4 * s} fontSize={axisFont} fill={color} fontFamily="var(--lueur-mono)">
@@ -157,7 +179,7 @@ export function EnrichedSparkChart({
               y={minPt.y + 14 * s}
               textAnchor="middle"
               fontSize={markerFont}
-              fill="#9aa0ab"
+              fill="var(--lueur-muted)"
               fontFamily="var(--lueur-mono)"
             >
               {fmt(minPt.v)}
@@ -172,7 +194,7 @@ export function EnrichedSparkChart({
               y={maxPt.y - 8 * s}
               textAnchor="middle"
               fontSize={markerFont}
-              fill="#9aa0ab"
+              fill="var(--lueur-muted)"
               fontFamily="var(--lueur-mono)"
             >
               {fmt(maxPt.v)}
@@ -210,6 +232,10 @@ export function EnrichedSparkChart({
               height={H}
               fill="transparent"
               onMouseEnter={() => setHover(i)}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                setHover(i);
+              }}
             />
           ))}
       </svg>

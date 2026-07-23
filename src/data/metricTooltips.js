@@ -2,9 +2,9 @@
 
 export const METRIC_TOOLTIPS = {
   recovery:
-    "X-Récupération (0–100 %) : niveau de récupération du jour. Combine VFC, FC repos, sommeil et respiration vs ta moyenne sur 14 jours. Vert = prêt à pousser, rouge = récupération prioritaire.",
+    "X-Récupération (0–100 %) : niveau de récupération du jour. Combine VFC, FC repos, sommeil et respiration vs ta moyenne sur 28 jours. Vert = prêt à pousser, rouge = récupération prioritaire.",
   strain:
-    "Charge (0–100 %) : charge cardiovasculaire du jour, estimée depuis les minutes en zones FC Fitbit. Plus le score est haut, plus la journée a sollicité ton système.",
+    "Charge (0–100 %) : charge du jour. Fusionne les minutes en zones FC et les sessions d'exercice (complément si l'effort est peu capté en zones). Plus le score est haut, plus la journée a sollicité ton système.",
   sleep:
     "X-Sommeil (0–100 %) : performance sommeil vs ton besoin (durée, efficacité, stades profond/REM). Un bon sommeil tire la récupération vers le haut le lendemain.",
   steps:
@@ -14,19 +14,19 @@ export const METRIC_TOOLTIPS = {
   hrv:
     "VFC (variabilité de la fréquence cardiaque, en ms) : plus elle est haute vs ta normale, plus ton système nerveux paraît détendu et récupéré. Mesurée la nuit ou au repos.",
   rhr:
-    "FC repos (bpm) : fréquence cardiaque au repos. Une valeur basse et stable est généralement un bon signe ; une hausse vs ta moyenne peut signaler fatigue ou stress.",
+    "FC repos (bpm) : fréquence cardiaque au repos. Une valeur basse et stable est généralement un bon signe ; une hausse vs ta moyenne peut signaler fatigue ou charge cardio élevée.",
   skin_temp:
-    "Température cutanée nocturne (°C) : mesurée au poignet pendant le sommeil, exprimée en écart à ta baseline personnelle. Plus chaud que ta normale = signal possible de stress, début de maladie, cycle hormonal ou récupération incomplète. Intègre la récupération et le stress (3ᵉ signal, comme Oura/Whoop).",
+    "Température cutanée nocturne (°C) : mesurée au poignet pendant le sommeil, exprimée en écart à ta baseline personnelle. Plus chaud que ta normale = signal possible de charge, début de maladie, cycle hormonal ou récupération incomplète. Intègre la récupération et la charge cardio diurne (3ᵉ signal, comme Oura/Whoop).",
   sedentary:
     "Temps assis : durée éveillée quasi immobile détectée par le Fitbit. La position assise prolongée est un risque cardiométabolique indépendant de l'exercice. La « plus longue plage » compte le plus : rester 3 h sans bouger est pire que 3×1 h espacées. Vise des pauses régulières.",
   stress:
-    "Moniteur stress (indice 0–100, estimation) : combine la baisse de VFC (signal principal, sur ln-VFC comme WHOOP) et l'élévation de FC diurne vs repos, chacune comparée à ta baseline ~14 jours. L'élévation de FC est atténuée les jours de forte charge pour ne pas confondre sport et stress. Couche « aiguë » ; la dérive long terme est suivie par le moniteur santé. Pas un capteur de stress réel.",
+    "Charge cardio diurne (indice 0–100, estimation) : combine la baisse de VFC (signal principal, sur ln-VFC) et l'élévation de FC diurne vs repos, chacune comparée à ta baseline ~28 jours. L'élévation de FC est atténuée les jours de forte charge pour ne pas confondre sport et charge résiduelle. Couche « aiguë » ; la dérive long terme est suivie par le moniteur santé. Ce n'est pas un capteur de stress psychologique.",
   x_age:
-    "X-Âge (âge physiologique) : âge fonctionnel estimé à partir de FC repos, VFC, sommeil, activité et VO₂. Compare-toi à ton âge réel pour voir si tu « rajeunis » ou non.",
+    "X-Âge : écart estimé vs ton âge réel à partir de FC repos, VFC, sommeil, activité et VO₂. Heuristique expérimentale — pas un âge biologique de laboratoire. La confiance dépend de la couverture et de la fraîcheur des domaines, pas seulement de leur nombre.",
   pace_of_aging:
-    "Rythme de vieillissement : pente annualisée de l'âge fonctionnel sur ~60 jours (Theil–Sen). Négatif = rajeunissement. La courbe d'évolution sous le rythme montre le détail jour par jour.",
+    "Rythme de vieillissement : pente annualisée de l'écart fonctionnel sur ~60 jours (Theil–Sen). Négatif = rajeunissement relatif. La courbe d'évolution sous le rythme montre le détail jour par jour.",
   health_monitor:
-    "Moniteur santé : vitaux du jour comparés à ta moyenne sur 30 jours. Vert = dans la norme personnelle, orange/rouge = écart significatif (à interpréter avec prudence).",
+    "Moniteur santé : vitaux du jour comparés à ta moyenne sur ~28 jours. Vert = dans la norme personnelle, orange/rouge = écart significatif (à interpréter avec prudence).",
   exercise:
     "Sessions d'exercice enregistrées (Fitbit / Health Connect) : nombre, durée et distance. Pas le détail des séries — uniquement ce que l'API `exercise` expose.",
   trends:
@@ -54,7 +54,7 @@ export const METRIC_TOOLTIPS = {
   HRV:
     "Variabilité entre les battements cardiaques (ms). Reflet du système nerveux autonome — clé de la récupération.",
   "FC repos":
-    "Fréquence cardiaque au repos (bpm). Comparée à ta moyenne sur 30 jours dans ce panneau.",
+    "Fréquence cardiaque au repos (bpm). Comparée à ta moyenne sur ~28 jours dans ce panneau.",
   Respiration:
     "Fréquence respiratoire au repos (/min). Légère hausse peut accompagner stress ou maladie légère.",
   spo2:
@@ -80,7 +80,7 @@ export const METRIC_TOOLTIPS = {
   strain_intensity:
     "Niveau d'intensité dérivé du score de charge (Léger → Maximal sur l'échelle 0–100 %).",
   strain_load:
-    "Charge interne (load) : somme pondérée des minutes en zones FC — utilisée pour calculer le score en %.",
+    "Charge interne (load) : zones FC fusionnées avec les sessions d'exercice quand elles apportent un surplus — utilisée pour calculer le score en %.",
   strain_recovery_fit:
     "Adéquation charge / récupération : ton corps est-il prêt à encaisser la charge d'hier et d'aujourd'hui ?",
   compare_vitals:
@@ -88,9 +88,9 @@ export const METRIC_TOOLTIPS = {
   compare_scores:
     "Récupération, sommeil et charge sur 14 jours — survole un jour pour le détail.",
   compare_stress:
-    "Courbe stress (indice 0–100) : VFC + FC diurne vs ta baseline ~14 j, atténuée les jours de sport. Nécessite la FC intraday synchronisée.",
+    "Courbe charge cardio diurne (indice 0–100) : VFC + FC diurne vs ta baseline ~28 j, atténuée les jours de sport. Nécessite la FC intraday synchronisée. Ce n'est pas un stress psychologique mesuré.",
   compare_resp_spo2:
-    "Respiration et SpO₂ sur 14 jours — complément au moniteur santé (moyenne 30 j).",
+    "Respiration et SpO₂ sur 14 jours — complément au moniteur santé (baseline ~28 j).",
   activity_day:
     "Synthèse activité du jour : pas, distance (km Fitbit ou estimée), calories actives et temps d'exercice.",
   body_composition:

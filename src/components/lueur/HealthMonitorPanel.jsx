@@ -111,7 +111,7 @@ export function HealthMonitorPanel({ metrics }) {
             Moniteur santé
           </LueurMetricLabel>
           <p className="lueur-meta lueur-monitor-table-sub">
-            Vitaux vs ta médiane personnelle · 30 jours
+            Vitaux vs ta médiane personnelle · 28 jours
           </p>
         </div>
         <p className="lueur-monitor-table-summary">

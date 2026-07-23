@@ -7,6 +7,9 @@ import statistics
 from datetime import date
 from typing import Any
 
+# Shared personal-baseline window for recovery / monitor / stress z-scores.
+BASELINE_DAYS = 28
+
 
 def z_score(value: float, history: list[float]) -> float:
     if len(history) < 3:
@@ -96,7 +99,7 @@ def compute_recovery(
 ) -> dict[str, Any]:
     dates = sorted(set(hrv) | set(rhr) | set(sleep))
     # Keep requested day even if metrics are still syncing in
-    hist_dates = [d for d in dates if d < day][-14:]
+    hist_dates = [d for d in dates if d < day][-BASELINE_DAYS:]
     hrv_hist = [hrv[d] for d in hist_dates if d in hrv]
     rhr_hist = [rhr[d] for d in hist_dates if d in rhr]
     sleep_hist = [total_asleep_min(sleep[d]) / 60 for d in hist_dates if d in sleep]
@@ -228,31 +231,50 @@ def compute_strain(
     exercise: dict[str, dict] | None = None,
 ) -> dict[str, Any]:
     z = zones.get(day) or {}
-    load = float(z.get("load", 0) or 0)
+    zone_load = float(z.get("load", 0) or 0)
     minutes = int(z.get("minutes", 0) or 0)
+    step_count = int((steps or {}).get(day) or 0)
+    kcal = float((active_energy or {}).get(day) or 0)
+    ex = (exercise or {}).get(day) or {}
+    ex_min = int(ex.get("minutes", 0) or 0)
+    # Session proxy without steps — walking is already partly in zone minutes.
+    session_load = (kcal * 0.12 + ex_min * 2.5) if (kcal > 0 or ex_min > 0) else 0.0
+
     source = "zones"
     notice: str | None = None
+    load = 0.0
 
-    if load <= 0:
-        # No weighted load: either only out-of-zone minutes were recorded, or
-        # heart-rate zones are missing entirely and we fall back to activity.
-        if minutes > 0:
-            load = float(minutes)  # light effort, fed through the same curve
+    if zone_load > 0 and session_load > 0:
+        # Avoid double-counting the same cardio bout: take the richer signal,
+        # and blend in surplus when sessions exceed zones (strength / low-HR work).
+        if session_load > zone_load * 1.2:
+            load = zone_load + 0.5 * (session_load - zone_load)
+            notice = "Zones FC + complément sessions (effort peu capté en zones)."
         else:
-            step_count = int((steps or {}).get(day) or 0)
-            kcal = float((active_energy or {}).get(day) or 0)
-            ex = (exercise or {}).get(day) or {}
-            ex_min = int(ex.get("minutes", 0) or 0)
-            if step_count > 0 or kcal > 0 or ex_min > 0:
-                source = "estimation"
-                load = kcal * 0.12 + ex_min * 2.5 + min(step_count, 20000) / 400
-                minutes = ex_min if ex_min > 0 else max(1, round(step_count / 120))
-                notice = (
-                    "Estimation depuis pas, calories ou exercice — zones FC non disponibles ce jour-là."
-                )
-            else:
-                source = "none"
-                notice = "Aucune zone cardio ni activité détectée pour ce jour."
+            load = max(zone_load, session_load)
+        source = "zones+sessions"
+        minutes = max(minutes, ex_min)
+    elif zone_load > 0:
+        load = zone_load
+        source = "zones"
+    elif minutes > 0:
+        # Out-of-zone minutes only — treat as light effort on the same curve.
+        load = float(minutes)
+        source = "zones"
+        if session_load > 0:
+            load = max(load, session_load)
+            source = "zones+sessions"
+            minutes = max(minutes, ex_min)
+    elif session_load > 0 or step_count > 0:
+        source = "estimation"
+        load = session_load + min(step_count, 20000) / 400
+        minutes = ex_min if ex_min > 0 else max(1, round(step_count / 120))
+        notice = (
+            "Estimation depuis pas, calories ou exercice — zones FC non disponibles ce jour-là."
+        )
+    else:
+        source = "none"
+        notice = "Aucune zone cardio ni activité détectée pour ce jour."
 
     score = _strain_from_load(load)
 
@@ -355,7 +377,7 @@ def health_monitor(
     spo2 = spo2 or {}
     skin_temp = skin_temp or {}
     dates = sorted(set(hrv) | set(rhr) | set(resp) | set(spo2) | set(skin_temp))
-    hist = [d for d in dates if d < day][-30:]
+    hist = [d for d in dates if d < day][-BASELINE_DAYS:]
     metrics = []
 
     def row(
@@ -628,7 +650,13 @@ def compute_hrv_balance(
     }
 
 
-def _robust_z(value: float, history: list[float], floor: float, min_n: int = 10) -> float | None:
+def _robust_z(
+    value: float,
+    history: list[float],
+    floor: float,
+    min_n: int = 10,
+    window: int = BASELINE_DAYS,
+) -> float | None:
     """Median/MAD z-score — resists outliers and tiny samples far better than
     mean/σ (a single odd day can shrink σ and blow a normal day up to a huge z).
 
@@ -639,7 +667,7 @@ def _robust_z(value: float, history: list[float], floor: float, min_n: int = 10)
         return None
     # Drop any non-finite history values (a sensor can emit nan/inf) so the
     # median/MAD — and the pstdev fallback — never choke.
-    h = [x for x in history[-14:] if math.isfinite(x)]  # ~14-day rolling baseline
+    h = [x for x in history[-window:] if math.isfinite(x)]
     if len(h) < min_n:
         return None
     mu = statistics.median(h)
@@ -685,7 +713,7 @@ def compute_stress_proxy(
             "proxy_pct": None,
             "basis": None,
             "days": 0,
-            "days_needed": 10,
+            "days_needed": 14,
             "progress": 0.0,
         }
 
@@ -782,8 +810,8 @@ def compute_stress_proxy(
         status = "calibrating"
         baseline_pct = None
 
-    # Calibration progress based on active signals
-    days_needed = 10
+    # Calibration progress — enough samples for a stable ~28d baseline window.
+    days_needed = 14
     days_have = min(days_needed, max(len(elev_hist) if avg else len(rhr_hist), len(ln_hist)))
 
     return {
@@ -832,11 +860,12 @@ def compute_physiological_age(
     sex: str = "unknown",
     vo2_max_age_days: int = 90,
 ) -> dict[str, Any]:
-    """Simplified Healthspan-style functional age.
+    """Relative functional-age *gap* vs chronological age (wearable heuristic).
 
-    Heuristic (not a validated biological-age model): each domain contributes a
-    graded, clamped year-delta around a sex-aware neutral point instead of a
-    binary threshold. Confidence reflects how many *domains* carry data.
+    Not a validated biological-age model: each domain contributes a graded,
+    clamped year-delta around a sex-aware neutral. Confidence reflects
+    coverage density and freshness per domain — not merely how many domains
+    appear at least once.
     """
     dates = sorted(d for d in set(rhr) | set(sleep) | set(steps) if d <= day)[-window_days:]
     if not dates:
@@ -845,39 +874,43 @@ def compute_physiological_age(
             "delta_years": 0,
             "real_age": age,
             "confidence": "low",
+            "coverage": 0.0,
+            "domains": 0,
             "factors": [],
         }
 
     factors: list[tuple[str, float]] = []
-    domains = 0
+    # Per-domain quality in [0, 1]: share of window with data (or VO₂ freshness).
+    domain_quality: list[float] = []
+    win = max(1, window_days)
 
     rhr_vals = [rhr[d] for d in dates if d in rhr]
     if rhr_vals:
-        domains += 1
+        domain_quality.append(min(1.0, len(rhr_vals) / win))
         # Neutral resting HR is a few bpm higher for women.
         neutral = 66 if sex == "female" else 62
         factors.append(("FC repos", round(_graded(sum(rhr_vals) / len(rhr_vals), neutral, 0.1, -1.0, 2.0), 2)))
 
     sleep_h = [total_asleep_min(sleep[d]) / 60 for d in dates if d in sleep]
     if sleep_h:
-        domains += 1
+        domain_quality.append(min(1.0, len(sleep_h) / win))
         # Below 7.5h penalises; modest credit for sleeping at/above target.
         factors.append(("Sommeil", round(_graded(sum(sleep_h) / len(sleep_h), 7.5, -0.8, -0.5, 2.0), 2)))
 
     step_vals = [steps[d] for d in dates if d in steps]
     if step_vals:
-        domains += 1
+        domain_quality.append(min(1.0, len(step_vals) / win))
         factors.append(("Pas", round(_graded(sum(step_vals) / len(step_vals), 8000, -0.00025, -0.5, 1.5), 2)))
 
     zone_mins = [zones[d]["minutes"] for d in dates if d in zones]
     if zone_mins:
-        domains += 1
+        domain_quality.append(min(1.0, len(zone_mins) / win))
         # ~21 min/day ≈ WHO 150 min/week of activity.
         factors.append(("Zones cardio", round(_graded(sum(zone_mins) / len(zone_mins), 21, -0.05, -0.5, 1.0), 2)))
 
     hrv_vals = [hrv[d] for d in dates if d in hrv]
     if hrv_vals:
-        domains += 1
+        domain_quality.append(min(1.0, len(hrv_vals) / win))
         # RMSSD falls ~1 %/yr from age 30 (≈62 ms @30, 48 @40, 38 @50, 24 @65),
         # so a fixed neutral would penalise older users. Age-track the neutral —
         # what counts is being above/below the norm for *your* age, not for a 30yo.
@@ -890,11 +923,14 @@ def compute_physiological_age(
         from datetime import date as date_type
 
         try:
-            stale = (date_type.fromisoformat(day) - date_type.fromisoformat(vo2_date)).days > vo2_max_age_days
+            vo2_age = (date_type.fromisoformat(day) - date_type.fromisoformat(vo2_date)).days
+            stale = vo2_age > vo2_max_age_days
         except ValueError:
-            stale = False
+            vo2_age, stale = 0, False
         if not stale:
-            domains += 1
+            # Freshness decays linearly toward the staleness cutoff.
+            freshness = max(0.3, 1.0 - vo2_age / max(1, vo2_max_age_days))
+            domain_quality.append(freshness)
             neutral = 34 if sex == "female" else 40
             factors.append(("VO₂ max", round(_graded(vo2_val, neutral, -0.12, -1.0, 2.0), 2)))
 
@@ -904,9 +940,11 @@ def compute_physiological_age(
     total_delta = max(-5.0, min(8.0, sum(d for _, d in factors)))
     functional = age + total_delta
 
-    if domains >= 5:
+    domains = len(domain_quality)
+    coverage = round(statistics.mean(domain_quality), 2) if domain_quality else 0.0
+    if domains >= 5 and coverage >= 0.7:
         confidence = "high"
-    elif domains >= 3:
+    elif domains >= 3 and coverage >= 0.4:
         confidence = "medium"
     else:
         confidence = "low"
@@ -916,6 +954,8 @@ def compute_physiological_age(
         "delta_years": round(total_delta, 1),
         "real_age": age,
         "confidence": confidence,
+        "coverage": coverage,
+        "domains": domains,
         "factors": [{"name": n, "impact": d} for n, d in factors],
     }
 

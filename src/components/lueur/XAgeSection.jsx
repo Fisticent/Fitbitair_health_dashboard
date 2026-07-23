@@ -75,7 +75,7 @@ export function XAgeSection({ physiological_age, pace_of_aging, physiological_ag
         X-Âge
       </LueurMetricLabel>
       <p className="lueur-meta" style={{ marginBottom: 20 }}>
-        Âge fonctionnel estimé et tendance de vieillissement
+        Écart estimé vs ton âge réel · heuristique expérimentale (pas un âge biologique)
       </p>
 
       <div className="lueur-xage-grid">
@@ -90,9 +90,10 @@ export function XAgeSection({ physiological_age, pace_of_aging, physiological_ag
                 color={deltaSt.color}
                 centerClassName="lueur-ring-center--compact"
               >
-                <div className="lueur-ring-label">Âge fonc.</div>
-                <div className="lueur-ring-value">
-                  {pa.functional_age?.toFixed(1) ?? "—"}
+                <div className="lueur-ring-label">vs âge réel</div>
+                <div className="lueur-ring-value" style={{ color: deltaSt.color }}>
+                  {delta >= 0 ? "+" : ""}
+                  {Number(delta).toFixed(1)}
                 </div>
                 <div className="lueur-ring-sub" style={{ color: deltaSt.color }}>
                   {deltaSt.label}
@@ -104,13 +105,9 @@ export function XAgeSection({ physiological_age, pace_of_aging, physiological_ag
                   <span className="lueur-xage-stat-value">{pa.real_age} ans</span>
                 </div>
                 <div className="lueur-xage-stat-row">
-                  <span className="lueur-xage-stat-label">Delta</span>
-                  <span
-                    className="lueur-xage-stat-value"
-                    style={{ color: delta >= 0 ? COLORS.CORAL : COLORS.TEAL }}
-                  >
-                    {delta >= 0 ? "+" : ""}
-                    {delta} ans
+                  <span className="lueur-xage-stat-label">Estimé</span>
+                  <span className="lueur-xage-stat-value">
+                    {pa.functional_age?.toFixed(1) ?? "—"} ans
                   </span>
                 </div>
                 <div className="lueur-xage-stat-row">
@@ -122,7 +119,7 @@ export function XAgeSection({ physiological_age, pace_of_aging, physiological_ag
 
             {pa.factors?.length > 0 && (
               <div className="lueur-xage-factors">
-                <span className="lueur-stat-chart-label">Facteurs</span>
+                <span className="lueur-stat-chart-label">Contribution à l&apos;écart</span>
                 {pa.factors.map((f) => {
                   const pct = Math.min(100, (Math.abs(f.impact) / maxImpact) * 100);
                   const good = f.impact < 0;

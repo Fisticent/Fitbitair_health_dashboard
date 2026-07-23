@@ -546,7 +546,7 @@ function LueurStressChart({ history }) {
     return (
       <div className="lueur-chart-empty">
         <p>
-          Pas encore de courbe stress — il faut la FC diurne (intraday) sur au moins un jour
+          Pas encore de courbe — il faut la FC diurne (intraday) sur au moins un jour
           synchronisé, en plus de la FC repos.
         </p>
         <p className="lueur-meta" style={{ marginTop: 8 }}>
@@ -562,7 +562,7 @@ function LueurStressChart({ history }) {
       <div className="lueur-stress-single">
         <div className="lueur-stress-single-head">
           <span className="lueur-stress-single-value">{row.stress}%</span>
-          <span className="lueur-stress-single-label">Stress estimé</span>
+          <span className="lueur-stress-single-label">Charge cardio estimée</span>
         </div>
         <p className="lueur-meta">{formatChartDate(row.date)}</p>
         <p className="lueur-chart-footnote">
@@ -613,7 +613,7 @@ export function LueurComparePanel({ history }) {
 
       <div className="lueur-compare-block">
         <LueurMetricLabel id="compare_stress" as="p" className="lueur-stat-chart-label">
-          Stress · 14 jours
+          Charge cardio diurne · 14 jours
         </LueurMetricLabel>
         <LueurStressChart history={history} />
       </div>

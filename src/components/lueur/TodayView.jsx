@@ -497,9 +497,13 @@ export function TodayView({
         {stress && (
           <VitalMetricCard
             tipId="stress"
-            label="Stress"
+            label="Charge cardio diurne"
             value={stressCalibrating ? "En calibrage" : stress.label || stressStatus?.label || "—"}
-            meta={stressCalibrating ? "estimation provisoire · FC diurne" : "estimation FC diurne"}
+            meta={
+              stressCalibrating
+                ? "estimation provisoire · FC diurne vs repos"
+                : "estimation · FC diurne vs repos"
+            }
             extra={
               <>
                 {stressCalibrating && (
@@ -514,7 +518,7 @@ export function TodayView({
                       />
                     </div>
                     <div className="lueur-mono-meta" style={{ marginTop: 4 }}>
-                      baseline perso : {stress.days ?? 0}/{stress.days_needed ?? 10} jours
+                      baseline perso : {stress.days ?? 0}/{stress.days_needed ?? 14} jours
                     </div>
                   </div>
                 )}
@@ -534,7 +538,7 @@ export function TodayView({
                     <div
                       className="lueur-stress-bar"
                       role="img"
-                      aria-label={`Niveau de stress ${stress.score} sur 100`}
+                      aria-label={`Charge cardio diurne ${stress.score} sur 100`}
                       style={stressCalibrating ? { opacity: 0.5 } : undefined}
                     >
                       <div className="lueur-stress-bar-track">

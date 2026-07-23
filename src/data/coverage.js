@@ -27,14 +27,14 @@ export const coverageRows = [
     api: "yes",
     custom: "yes",
     dataTypes: ["heart-rate-variability", "resting-heart-rate", "sleep", "daily-respiratory-rate"],
-    notes: "X-Recovery : HRV + FC repos + sommeil + respiration vs baseline 14j",
+    notes: "X-Recovery : HRV + FC repos + sommeil + respiration vs baseline 28j",
   },
   {
     feature: "Charge %",
     api: "yes",
     custom: "yes",
     dataTypes: ["active-zone-minutes", "heart-rate", "exercise", "calories"],
-    notes: "X-Strain : zones FC + calories + durée effort, échelle 0–100 %",
+    notes: "X-Strain : zones FC + sessions exercice fusionnées, échelle 0–100 %",
   },
   {
     feature: "Sleep Performance",
@@ -48,7 +48,7 @@ export const coverageRows = [
     api: "yes",
     custom: "yes",
     dataTypes: ["resting-heart-rate", "heart-rate-variability", "oxygen-saturation", "daily-respiratory-rate"],
-    notes: "Vitaux vs baseline ± écart-type, alertes seuil",
+    notes: "Vitaux vs baseline ~28j ± écart-type, alertes seuil",
   },
   {
     feature: "Journal",
@@ -58,11 +58,11 @@ export const coverageRows = [
     notes: "YAML Obsidian / formulaire local + corrélation Recovery / sommeil",
   },
   {
-    feature: "Stress Monitor",
+    feature: "Charge cardio diurne",
     api: "proxy",
     custom: "proxy",
     dataTypes: ["heart-rate", "resting-heart-rate"],
-    notes: "X-Stress : FC diurne vs baseline — moins précis que PPG continu WHOOP",
+    notes: "Proxy FC diurne vs baseline ~28j — pas un stress psychologique",
   },
   {
     feature: "Menstrual Cycle",

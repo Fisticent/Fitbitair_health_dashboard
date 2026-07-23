@@ -720,7 +720,7 @@ export function RecoveryZonedChart({ score, zone, history, focusDate, statusLabe
   );
 }
 
-/** 14-day stress line over calme / modéré / élevé zones. */
+/** 14-day charge cardio diurne line over calme / modéré / élevé zones. */
 export function StressZonesChart({ series, compact = false }) {
   const { ref, vw: W, vh: H, scale: s } = useFluidChartSize(KPI_BASE, 280);
   const data = (series || []).filter((row) => row.value != null).slice(-14);
